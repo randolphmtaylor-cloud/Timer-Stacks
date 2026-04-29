@@ -4,15 +4,23 @@ import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 import { useStackStore } from '../src/stores/stackStore.js';
 import { useSessionStore } from '../src/stores/sessionStore.js';
+import { useAuthStore } from '../src/stores/authStore.js';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { load: loadStacks, stacks } = useStackStore();
   const { hydrate } = useSessionStore();
+  const { initialize: initializeAuth, user } = useAuthStore();
+  const { syncCloud } = useStackStore();
 
   useEffect(() => {
+    initializeAuth();
     loadStacks();
-  }, [loadStacks]);
+  }, [initializeAuth, loadStacks]);
+
+  useEffect(() => {
+    if (user) syncCloud();
+  }, [user, syncCloud]);
 
   useEffect(() => {
     if (stacks.length > 0) hydrate(stacks);

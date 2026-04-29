@@ -75,7 +75,7 @@ export function DurationInput({ valueMs, onChange, className, placeholder = '5:0
       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
       className={cn(
         'font-mono text-center border rounded-lg focus:outline-none focus:ring-2 transition-colors',
-        size === 'sm' ? 'px-2 py-1.5 text-sm w-20' : 'px-3 py-2 text-base w-24',
+        size === 'sm' ? 'min-h-10 px-2 py-2 text-sm w-20 sm:min-h-0 sm:py-1.5' : 'min-h-11 px-3 py-2 text-base w-24 sm:min-h-0',
         error
           ? 'border-red-400 bg-red-50 dark:bg-red-950/30 focus:ring-red-400/30 text-red-600'
           : 'border-surface-300 dark:border-gray-600 bg-white dark:bg-surface-700 focus:ring-accent/30 text-gray-900 dark:text-gray-100',

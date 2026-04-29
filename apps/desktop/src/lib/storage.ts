@@ -41,6 +41,10 @@ export class LocalStackStorage extends BaseStackStorage {
   protected async writeAll(stacks: TimerStack[]): Promise<void> {
     lsSet(STORAGE_KEYS.stacks, JSON.stringify(stacks));
   }
+
+  async replaceAll(stacks: TimerStack[]): Promise<void> {
+    await this.writeAll(stacks);
+  }
 }
 
 // ---------------------------------------------------------------------------

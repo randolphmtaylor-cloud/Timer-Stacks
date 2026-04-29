@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useSettingsStore } from './stores/settingsStore.js';
 import { useStackStore } from './stores/stackStore.js';
 import { useSessionStore } from './stores/sessionStore.js';
+import { useAuthStore } from './stores/authStore.js';
 import { Layout } from './components/layout/Layout.js';
 import { Dashboard } from './components/dashboard/Dashboard.js';
 import { StackBuilder } from './components/builder/StackBuilder.js';
@@ -39,11 +40,18 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 export default function App() {
   const { load: loadStacks, stacks } = useStackStore();
   const { hydrate: hydrateSessions } = useSessionStore();
+  const { initialize: initializeAuth, user } = useAuthStore();
+  const { syncCloud } = useStackStore();
 
   // Bootstrap
   useEffect(() => {
+    initializeAuth();
     loadStacks();
-  }, [loadStacks]);
+  }, [initializeAuth, loadStacks]);
+
+  useEffect(() => {
+    if (user) syncCloud();
+  }, [user, syncCloud]);
 
   // Restore sessions after stacks are loaded
   useEffect(() => {

@@ -58,9 +58,9 @@ export function SegmentRow({ seg, index, onChange, onRemove, canRemove }: Props)
       <span className="text-xs text-gray-400 w-5 text-center shrink-0">{index + 1}</span>
 
       {/* Color dot */}
-      <div className="relative shrink-0">
+      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
         <button
-          className="w-5 h-5 rounded-full border-2 border-white dark:border-gray-700 shadow-sm hover:scale-110 transition-transform"
+          className="h-6 w-6 rounded-full border-2 border-white dark:border-gray-700 shadow-sm hover:scale-110 transition-transform"
           style={{ backgroundColor: seg.color }}
           title="Choose color"
         />
@@ -69,7 +69,7 @@ export function SegmentRow({ seg, index, onChange, onRemove, canRemove }: Props)
           type="color"
           value={seg.color}
           onChange={(e) => onChange({ color: e.target.value })}
-          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
           title="Pick color"
         />
       </div>
@@ -80,7 +80,7 @@ export function SegmentRow({ seg, index, onChange, onRemove, canRemove }: Props)
         value={seg.label}
         placeholder="Segment name"
         onChange={(e) => onChange({ label: e.target.value })}
-        className="min-w-0 text-sm bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400 sm:flex-1"
+        className="min-h-10 min-w-0 text-sm bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400 sm:min-h-0 sm:flex-1"
       />
 
       {/* Duration */}

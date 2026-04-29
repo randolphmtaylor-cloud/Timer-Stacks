@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import type { Session, TimerStack, SessionRecord, SessionState } from '@timer-stacks/core';
 import { SessionManager, sessionToRecord } from '@timer-stacks/core';
 import { LocalSessionStorage } from '../lib/storage.js';
+import { saveCloudSessionRecord } from '../lib/cloudSync.js';
 import {
   ensureNotificationPermission,
   notifyStackComplete,
@@ -88,6 +89,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     if (session && session.startedAt !== null) {
       const record = sessionToRecord(session, stack, Date.now());
       await persistedStorage.saveRecord(record);
+      saveCloudSessionRecord(record).catch(() => {});
       set((s) => ({ history: [record, ...s.history] }));
     }
     sessionManager.cancel(sessionId);

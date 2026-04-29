@@ -27,7 +27,7 @@ function MobileHeader() {
         </div>
         <span className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500">v0.1</span>
       </div>
-      <nav className="flex gap-1 overflow-x-auto px-3 pb-3 [-webkit-overflow-scrolling:touch]">
+      <nav className="flex flex-wrap gap-1 px-3 pb-3">
         {nav.map(({ to, label, icon }) => (
           <NavLink
             key={to}

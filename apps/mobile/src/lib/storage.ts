@@ -25,6 +25,10 @@ export class AsyncStackStorage extends BaseStackStorage {
   protected async writeAll(stacks: TimerStack[]): Promise<void> {
     await AsyncStorage.setItem(STORAGE_KEYS.stacks, JSON.stringify(stacks));
   }
+
+  async replaceAll(stacks: TimerStack[]): Promise<void> {
+    await this.writeAll(stacks);
+  }
 }
 
 // ---------------------------------------------------------------------------
