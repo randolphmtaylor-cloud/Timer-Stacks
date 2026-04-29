@@ -232,3 +232,4 @@ The `SessionRecord` type is designed to be portable — it contains all fields n
 - Full light + dark mode support
 - Smooth transitions (150–250ms ease-out)
 # Timer-Stacks
+# Timer-Stacks
