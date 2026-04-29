@@ -231,3 +231,4 @@ The `SessionRecord` type is designed to be portable — it contains all fields n
 - Shadows: soft, layered, not harsh
 - Full light + dark mode support
 - Smooth transitions (150–250ms ease-out)
+# Timer-Stacks
