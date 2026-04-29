@@ -1,0 +1,23 @@
+{
+  "name": "timer-stacks",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:desktop": "pnpm --filter desktop dev",
+    "dev:mobile": "pnpm --filter mobile start",
+    "build": "turbo build",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "type-check": "turbo type-check",
+    "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.4.0"
+}

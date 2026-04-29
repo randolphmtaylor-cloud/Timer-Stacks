@@ -1,0 +1,9 @@
+{
+  "extends": "@timer-stacks/config/tsconfig",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "__tests__/**/*"],
+  "exclude": ["dist"]
+}

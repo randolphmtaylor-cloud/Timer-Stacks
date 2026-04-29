@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Timer Stacks",
+    "slug": "timer-stacks",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#fafafa"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.timerstacks.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#fafafa"
+      },
+      "package": "com.timerstacks.app"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#6366f1",
+          "sounds": []
+        }
+      ]
+    ],
+    "scheme": "timerstacks",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

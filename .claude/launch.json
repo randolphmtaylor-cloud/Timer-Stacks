@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Desktop (Vite)",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["node_modules/.pnpm/node_modules/.bin/vite", "apps/desktop"],
+      "port": 1420
+    },
+    {
+      "name": "Mobile (Expo)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "mobile", "start"],
+      "port": 8081
+    }
+  ]
+}
