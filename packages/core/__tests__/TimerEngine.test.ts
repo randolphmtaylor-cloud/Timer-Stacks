@@ -8,6 +8,8 @@ import {
   resumeSession,
   resetSession,
   skipSegment,
+  resetSegment,
+  previousSegment,
   tickSession,
 } from '../src/engine/TimerEngine.js';
 
@@ -231,6 +233,67 @@ describe('skipSegment', () => {
     const { session: done, events } = skipSegment(session, stack, T0 + 1000);
     expect(done.status).toBe('completed');
     expect(events.some((e) => e.type === 'stack_completed')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resetSegment / previousSegment
+// ---------------------------------------------------------------------------
+
+describe('segment navigation', () => {
+  it('resets the active segment while preserving running status', () => {
+    const stack = makeStack([5, 10]);
+    let session = startSession(makeIdleSession(), T0);
+    session = tickSession(session, stack, T0 + 6 * 60_000).session;
+
+    const { session: reset } = resetSegment(session, stack, T0 + 7 * 60_000);
+    const state = computeSessionState(reset, stack, T0 + 7 * 60_000);
+
+    expect(reset.status).toBe('running');
+    expect(reset.activeSegmentIndex).toBe(1);
+    expect(state.totalElapsedMs).toBe(5 * 60_000);
+    expect(state.segmentElapsedMs).toBe(0);
+    expect(state.segmentRemainingMs).toBe(10 * 60_000);
+  });
+
+  it('resets the active segment while preserving paused status', () => {
+    const stack = makeStack([5, 10]);
+    let session = startSession(makeIdleSession(), T0);
+    session = tickSession(session, stack, T0 + 6 * 60_000).session;
+    session = pauseSession(session, T0 + 6 * 60_000);
+
+    const { session: reset } = resetSegment(session, stack, T0 + 8 * 60_000);
+    const state = computeSessionState(reset, stack, T0 + 30 * 60_000);
+
+    expect(reset.status).toBe('paused');
+    expect(reset.activeSegmentIndex).toBe(1);
+    expect(state.totalElapsedMs).toBe(5 * 60_000);
+    expect(state.segmentElapsedMs).toBe(0);
+  });
+
+  it('moves to the previous segment at full duration', () => {
+    const stack = makeStack([5, 10, 5]);
+    let session = startSession(makeIdleSession(), T0);
+    session = tickSession(session, stack, T0 + 7 * 60_000).session;
+
+    const { session: previous } = previousSegment(session, stack, T0 + 8 * 60_000);
+    const state = computeSessionState(previous, stack, T0 + 8 * 60_000);
+
+    expect(previous.activeSegmentIndex).toBe(0);
+    expect(state.totalElapsedMs).toBe(0);
+    expect(state.segmentRemainingMs).toBe(5 * 60_000);
+  });
+
+  it('restarts the first segment when previous is requested on the first segment', () => {
+    const stack = makeStack([5, 10]);
+    const session = startSession(makeIdleSession(), T0);
+
+    const { session: previous } = previousSegment(session, stack, T0 + 60_000);
+    const state = computeSessionState(previous, stack, T0 + 60_000);
+
+    expect(previous.activeSegmentIndex).toBe(0);
+    expect(state.totalElapsedMs).toBe(0);
+    expect(state.segmentRemainingMs).toBe(5 * 60_000);
   });
 });
 

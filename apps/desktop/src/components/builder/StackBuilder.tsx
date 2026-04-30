@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -72,6 +72,38 @@ export function StackBuilder() {
 
   const totalMs = segments.reduce((acc, s) => acc + s.durationMs, 0);
 
+  const validation = useMemo(() => {
+    const missingSegmentLabels = segments
+      .map((s, index) => (s.label.trim().length === 0 ? index + 1 : null))
+      .filter((index): index is number => index !== null);
+
+    return {
+      hasName: name.trim().length > 0,
+      hasSegments: segments.length > 0,
+      allDurationsPositive: segments.every((s) => s.durationMs > 0),
+      totalDurationPositive: totalMs > 0,
+      missingSegmentLabels,
+    };
+  }, [name, segments, totalMs]);
+
+  const isValid =
+    validation.hasName &&
+    validation.hasSegments &&
+    validation.allDurationsPositive &&
+    validation.totalDurationPositive;
+
+  useEffect(() => {
+    console.debug('[StackBuilder] create/save validation', {
+      mode: editId ? 'edit' : 'create',
+      disabled: !isValid,
+      ...validation,
+      note:
+        validation.missingSegmentLabels.length > 0
+          ? 'Blank segment names will be saved as Segment 1, Segment 2, etc.'
+          : 'All segment names provided.',
+    });
+  }, [editId, isValid, validation]);
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (over && active.id !== over.id) {
@@ -95,36 +127,61 @@ export function StackBuilder() {
     setSegments((prev) => prev.filter((s) => s.id !== id));
   }
 
-  const isValid =
-    name.trim().length > 0 &&
-    segments.length > 0 &&
-    segments.every((s) => s.label.trim().length > 0 && s.durationMs > 0);
-
   async function handleSave() {
-    if (!isValid) return;
+    console.debug('[StackBuilder] create/save button clicked', {
+      mode: editId ? 'edit' : 'create',
+      isValid,
+      validation,
+    });
+
+    if (!isValid) {
+      console.debug('[StackBuilder] create/save blocked by validation', validation);
+      return;
+    }
+
+    const normalizedSegments = segments.map((s, index) => ({
+      label: s.label.trim() || `Segment ${index + 1}`,
+      durationMs: s.durationMs,
+      color: s.color,
+    }));
+
     setSaving(true);
     try {
       if (editId) {
-        await update({
+        console.debug('[StackBuilder] calling update stack', {
+          stackId: editId,
+          segmentCount: normalizedSegments.length,
+          totalDurationMs: totalMs,
+        });
+        const stack = await update({
           stackId: editId,
           name: name.trim(),
           totalDurationMs: totalMs,
-          segments: segments.map((s) => ({ label: s.label, durationMs: s.durationMs, color: s.color })),
+          segments: normalizedSegments,
           isTemplate,
           description: description.trim() || undefined,
           icon: icon.trim() || undefined,
         });
+        console.debug('[StackBuilder] update stack persisted', { stackId: stack.stackId });
       } else {
-        await create({
+        console.debug('[StackBuilder] calling create stack', {
+          segmentCount: normalizedSegments.length,
+          totalDurationMs: totalMs,
+        });
+        const stack = await create({
           name: name.trim(),
           totalDurationMs: totalMs,
-          segments: segments.map((s) => ({ label: s.label, durationMs: s.durationMs, color: s.color })),
+          segments: normalizedSegments,
           isTemplate,
           description: description.trim() || undefined,
           icon: icon.trim() || undefined,
         });
+        console.debug('[StackBuilder] create stack persisted', { stackId: stack.stackId });
       }
       navigate('/');
+    } catch (error) {
+      console.error('[StackBuilder] create/save failed', error);
+      throw error;
     } finally {
       setSaving(false);
     }

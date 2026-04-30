@@ -195,6 +195,70 @@ export function skipSegment(
   return { session: updatedSession, events };
 }
 
+export function resetSegment(
+  session: Session,
+  stack: TimerStack,
+  now: number,
+): { session: Session; events: TimerEvent[] } {
+  if (session.status !== 'running' && session.status !== 'paused') {
+    return { session, events: [] };
+  }
+
+  const targetElapsed = accumulatedMsUpToSegment(stack, session.activeSegmentIndex);
+  const updatedSession = jumpSessionToElapsed(session, targetElapsed, now, session.activeSegmentIndex);
+
+  const activeSegment = stack.segments[session.activeSegmentIndex];
+  return {
+    session: updatedSession,
+    events: activeSegment
+      ? [{
+          type: 'segment_started',
+          session: updatedSession,
+          segmentIndex: session.activeSegmentIndex,
+          segmentLabel: activeSegment.label,
+        }]
+      : [],
+  };
+}
+
+export function previousSegment(
+  session: Session,
+  stack: TimerStack,
+  now: number,
+): { session: Session; events: TimerEvent[] } {
+  if (session.status !== 'running' && session.status !== 'paused') {
+    return { session, events: [] };
+  }
+
+  const currentIndex = session.activeSegmentIndex;
+  const previousIndex = Math.max(0, currentIndex - 1);
+  const targetElapsed = accumulatedMsUpToSegment(stack, previousIndex);
+  const updatedSession = jumpSessionToElapsed(session, targetElapsed, now, previousIndex);
+  const transitionedSession: Session = {
+    ...updatedSession,
+    segmentTransitions:
+      previousIndex === currentIndex
+        ? updatedSession.segmentTransitions
+        : [
+            ...updatedSession.segmentTransitions,
+            { fromIndex: currentIndex, toIndex: previousIndex, transitionedAt: now },
+          ],
+  };
+
+  const targetSegment = stack.segments[previousIndex];
+  return {
+    session: transitionedSession,
+    events: targetSegment
+      ? [{
+          type: 'segment_started',
+          session: transitionedSession,
+          segmentIndex: previousIndex,
+          segmentLabel: targetSegment.label,
+        }]
+      : [],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tick — call this on an interval (~100ms) to advance session state.
 // Returns updated session + any events that fired this tick.
@@ -285,4 +349,22 @@ function accumulatedMsUpToSegment(stack: TimerStack, segmentIndex: number): numb
     total += stack.segments[i]?.durationMs ?? 0;
   }
   return total;
+}
+
+function jumpSessionToElapsed(
+  session: Session,
+  targetElapsedMs: number,
+  now: number,
+  activeSegmentIndex: number,
+): Session {
+  if (session.startedAt === null) return session;
+
+  return {
+    ...session,
+    pausedAt: session.status === 'paused' ? now : null,
+    totalPausedMs: now - session.startedAt - targetElapsedMs,
+    activeSegmentIndex,
+    completedSegmentsElapsedMs: targetElapsedMs,
+    completedAt: null,
+  };
 }

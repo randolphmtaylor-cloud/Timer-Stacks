@@ -41,7 +41,7 @@ export default function SessionScreen() {
   const dark = useColorScheme() === 'dark';
   const C = dark ? DARK : LIGHT;
 
-  const { sessions, pause, resume, skip, reset, cancel } = useSessionStore();
+  const { sessions, pause, resume, skip, resetSegment, previousSegment, cancel } = useSessionStore();
   const { stacks } = useStackStore();
 
   const session = sessions.find((s) => s.sessionId === sessionId);
@@ -80,6 +80,7 @@ export default function SessionScreen() {
   const isCompleted = session.status === 'completed';
   const activeSegment = stack.segments[session.activeSegmentIndex];
   const upcoming = stack.segments.slice(session.activeSegmentIndex + 1, session.activeSegmentIndex + 4);
+  const canGoPrevious = session.activeSegmentIndex > 0;
 
   // Extract primitives so TS narrowing holds inside Alert callback lambdas
   const sid = session.sessionId;
@@ -102,25 +103,25 @@ export default function SessionScreen() {
     );
   }
 
-  function onReset() {
-    Alert.alert(
-      'Reset Session',
-      'Start over from the beginning? All progress will be lost.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset', style: 'destructive', onPress: () => reset(sid) },
-      ],
-    );
+  function onPreviousSegment() {
+    if (!canGoPrevious) return;
+    triggerMedium();
+    previousSegment(sid);
+  }
+
+  function onResetSegment() {
+    triggerLight();
+    resetSegment(sid);
   }
 
   function onStop() {
     Alert.alert(
-      'Stop Session',
+      'Cancel Session',
       'This will end the session and record it as cancelled.',
       [
         { text: 'Keep Going', style: 'cancel' },
         {
-          text: 'Stop',
+          text: 'Cancel Session',
           style: 'destructive',
           onPress: async () => {
             await cancel(sid, resolvedStack);
@@ -266,9 +267,21 @@ export default function SessionScreen() {
 
         {/* Secondary row */}
         <View style={s.secondaryRow}>
-          <SecondaryBtn label="⏭  Skip" onPress={onSkip} color={C} />
-          <SecondaryBtn label="↺  Reset" onPress={onReset} color={C} />
-          <SecondaryBtn label="■  Stop" onPress={onStop} color={C} danger />
+          <SecondaryBtn
+            label="⏮  Previous"
+            onPress={onPreviousSegment}
+            color={C}
+            disabled={!canGoPrevious}
+            accessibilityLabel="Previous Segment"
+          />
+          <SecondaryBtn
+            label="↺  Reset Segment"
+            onPress={onResetSegment}
+            color={C}
+            accessibilityLabel="Reset Segment"
+          />
+          <SecondaryBtn label="⏭  Skip" onPress={onSkip} color={C} accessibilityLabel="Skip Segment" />
+          <SecondaryBtn label="✕  Cancel" onPress={onStop} color={C} danger accessibilityLabel="Cancel Session" />
         </View>
       </View>
     </SafeAreaView>
@@ -296,16 +309,23 @@ function SecondaryBtn({
   onPress,
   color,
   danger,
+  disabled,
+  accessibilityLabel,
 }: {
   label: string;
   onPress: () => void;
   color: typeof LIGHT;
   danger?: boolean;
+  disabled?: boolean;
+  accessibilityLabel?: string;
 }) {
   return (
     <TouchableOpacity
-      style={[s.secondaryBtn, { backgroundColor: color.card }]}
+      style={[s.secondaryBtn, { backgroundColor: color.card, opacity: disabled ? 0.45 : 1 }]}
       onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
       activeOpacity={0.8}
     >
       <Text style={[s.secondaryBtnText, { color: danger ? '#ef4444' : color.text }]}>
@@ -416,9 +436,9 @@ const s = StyleSheet.create({
   },
   primaryControlText: { color: '#fff', fontSize: 18, fontWeight: '700' },
 
-  secondaryRow: { flexDirection: 'row', gap: 10 },
+  secondaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   secondaryBtn: {
-    flex: 1, borderRadius: 14, paddingVertical: 13,
+    flexGrow: 1, flexBasis: '30%', borderRadius: 14, paddingVertical: 13,
     alignItems: 'center', justifyContent: 'center',
   },
   secondaryBtnText: { fontSize: 14, fontWeight: '500' },

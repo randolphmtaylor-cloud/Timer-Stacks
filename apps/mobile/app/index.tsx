@@ -17,7 +17,7 @@ import type { Session, TimerStack } from '@timer-stacks/core';
 export default function DashboardScreen() {
   const router = useRouter();
   const { stacks } = useStackStore();
-  const { sessions, start } = useSessionStore();
+  const { sessions, start, previousSegment, resetSegment } = useSessionStore();
   const dark = useColorScheme() === 'dark';
   const colors = dark ? DARK : LIGHT;
 
@@ -49,6 +49,8 @@ export default function DashboardScreen() {
                 stack={stack}
                 colors={colors}
                 onPress={() => router.push(`/session/${session.sessionId}`)}
+                onPrevious={() => previousSegment(session.sessionId)}
+                onResetSegment={() => resetSegment(session.sessionId)}
               />
             );
           })}
@@ -122,14 +124,19 @@ function RunningCard({
   stack,
   colors,
   onPress,
+  onPrevious,
+  onResetSegment,
 }: {
   session: Session;
   stack: TimerStack;
   colors: typeof LIGHT;
   onPress: () => void;
+  onPrevious: () => void;
+  onResetSegment: () => void;
 }) {
   const tick = useSessionTick(session.sessionId);
   const activeSegment = stack.segments[session.activeSegmentIndex];
+  const canGoPrevious = session.activeSegmentIndex > 0;
 
   return (
     <TouchableOpacity
@@ -158,6 +165,30 @@ function RunningCard({
           />
         </View>
       )}
+      <View style={styles.runningActions}>
+        <TouchableOpacity
+          style={[
+            styles.runningActionBtn,
+            { backgroundColor: colors.bg, opacity: canGoPrevious ? 1 : 0.45 },
+          ]}
+          onPress={onPrevious}
+          disabled={!canGoPrevious}
+          accessibilityRole="button"
+          accessibilityLabel="Previous Segment"
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.runningActionText, { color: colors.text }]}>⏮ Previous Segment</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.runningActionBtn, { backgroundColor: colors.bg }]}
+          onPress={onResetSegment}
+          accessibilityRole="button"
+          accessibilityLabel="Reset Segment"
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.runningActionText, { color: colors.text }]}>↺ Reset Segment</Text>
+        </TouchableOpacity>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -262,4 +293,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: { height: '100%', borderRadius: 2 },
+  runningActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  runningActionBtn: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  runningActionText: { fontSize: 13, fontWeight: '600' },
 });

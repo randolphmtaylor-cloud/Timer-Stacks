@@ -56,6 +56,8 @@ interface SessionStoreState {
   pause: (sessionId: string) => void;
   resume: (sessionId: string) => void;
   skip: (sessionId: string) => void;
+  resetSegment: (sessionId: string) => void;
+  previousSegment: (sessionId: string) => void;
   reset: (sessionId: string) => void;
   cancel: (sessionId: string, stack: TimerStack) => Promise<void>;
 
@@ -81,6 +83,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   pause: (sessionId) => { sessionManager.pause(sessionId); get().syncFromManager(); },
   resume: (sessionId) => { sessionManager.resume(sessionId); get().syncFromManager(); },
   skip: (sessionId) => { sessionManager.skip(sessionId); get().syncFromManager(); },
+  resetSegment: (sessionId) => { sessionManager.resetSegment(sessionId); get().syncFromManager(); },
+  previousSegment: (sessionId) => { sessionManager.previousSegment(sessionId); get().syncFromManager(); },
   reset: (sessionId) => { sessionManager.reset(sessionId); get().syncFromManager(); },
 
   cancel: async (sessionId, stack) => {

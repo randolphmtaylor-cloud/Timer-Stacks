@@ -16,7 +16,7 @@ interface Props {
 
 export function RunningSessionCard({ session, stack }: Props) {
   const navigate = useNavigate();
-  const { pause, resume } = useSessionStore();
+  const { pause, resume, previousSegment, resetSegment } = useSessionStore();
   const state = useSessionTick(session.sessionId);
 
   const activeSegment = stack.segments[session.activeSegmentIndex];
@@ -131,7 +131,33 @@ export function RunningSessionCard({ session, stack }: Props) {
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
+            variant="secondary"
+            disabled={session.activeSegmentIndex === 0}
+            aria-label="Previous Segment"
+            title="Previous Segment"
+            onClick={(e) => {
+              e.stopPropagation();
+              previousSegment(session.sessionId);
+            }}
+          >
+            ⏮ Previous Segment
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            aria-label="Reset Segment"
+            title="Reset Segment"
+            onClick={(e) => {
+              e.stopPropagation();
+              resetSegment(session.sessionId);
+            }}
+          >
+            ↺ Reset Segment
+          </Button>
+          <Button
+            size="sm"
             variant={isRunning ? 'secondary' : 'primary'}
+            aria-label={isRunning ? 'Pause session' : 'Resume session'}
             onClick={(e) => {
               e.stopPropagation();
               isRunning ? pause(session.sessionId) : resume(session.sessionId);

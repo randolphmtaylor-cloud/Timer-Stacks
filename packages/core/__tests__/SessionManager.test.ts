@@ -76,6 +76,37 @@ describe('SessionManager', () => {
     expect(after?.startedAt).toBe(null);
   });
 
+  it('resets only the active segment without changing paused/running status', () => {
+    const stack = makeStack([5, 10]);
+    const session = manager.start(stack);
+
+    vi.advanceTimersByTime(6 * 60_000);
+    const before = manager.getSession(session.sessionId);
+    expect(before?.activeSegmentIndex).toBe(1);
+
+    manager.pause(session.sessionId);
+    const reset = manager.resetSegment(session.sessionId);
+    const state = manager.getSessionState(session.sessionId);
+
+    expect(reset?.status).toBe('paused');
+    expect(reset?.activeSegmentIndex).toBe(1);
+    expect(state?.segmentElapsedMs).toBe(0);
+    expect(state?.segmentRemainingMs).toBe(10 * 60_000);
+  });
+
+  it('moves to the previous segment at full duration', () => {
+    const stack = makeStack([5, 10]);
+    const session = manager.start(stack);
+
+    vi.advanceTimersByTime(6 * 60_000);
+    const previous = manager.previousSegment(session.sessionId);
+    const state = manager.getSessionState(session.sessionId);
+
+    expect(previous?.activeSegmentIndex).toBe(0);
+    expect(state?.segmentElapsedMs).toBe(0);
+    expect(state?.segmentRemainingMs).toBe(5 * 60_000);
+  });
+
   it('fires events to subscribers', async () => {
     const stack = makeStack([0.001]); // ~60ms segment so it completes fast
     const events: string[] = [];

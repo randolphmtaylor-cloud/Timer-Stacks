@@ -14,6 +14,8 @@ import {
   resumeSession,
   resetSession,
   skipSegment,
+  resetSegment,
+  previousSegment,
   tickSession,
   computeSessionState,
 } from './TimerEngine.js';
@@ -104,6 +106,26 @@ export class SessionManager {
     const { session: updated, events } = skipSegment(session, stack, Date.now());
     this.sessions.set(sessionId, updated);
     if (updated.status === 'completed') this.sessions.delete(sessionId);
+    this.emit(events);
+    return updated;
+  }
+
+  resetSegment(sessionId: string): Session | null {
+    const session = this.sessions.get(sessionId);
+    const stack = session ? this.stacks.get(session.stackId) : undefined;
+    if (!session || !stack) return null;
+    const { session: updated, events } = resetSegment(session, stack, Date.now());
+    this.sessions.set(sessionId, updated);
+    this.emit(events);
+    return updated;
+  }
+
+  previousSegment(sessionId: string): Session | null {
+    const session = this.sessions.get(sessionId);
+    const stack = session ? this.stacks.get(session.stackId) : undefined;
+    if (!session || !stack) return null;
+    const { session: updated, events } = previousSegment(session, stack, Date.now());
+    this.sessions.set(sessionId, updated);
     this.emit(events);
     return updated;
   }

@@ -12,10 +12,9 @@ import { cn } from '../ui/cn.js';
 export function ActiveSession() {
   const { id: sessionId } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { sessions, pause, resume, skip, reset, cancel } = useSessionStore();
+  const { sessions, pause, resume, skip, resetSegment, previousSegment, cancel } = useSessionStore();
   const { stacks } = useStackStore();
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const [confirmReset, setConfirmReset] = useState(false);
 
   const session = sessions.find((s) => s.sessionId === sessionId);
   const stack = session ? stacks.find((s) => s.stackId === session.stackId) : undefined;
@@ -133,11 +132,27 @@ export function ActiveSession() {
           </div>
 
           <div className="grid grid-cols-1 gap-2 sm:flex sm:justify-center">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => previousSegment(session.sessionId)}
+              disabled={session.activeSegmentIndex === 0}
+              aria-label="Previous Segment"
+              title="Previous Segment"
+            >
+              ⏮ Previous Segment
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => resetSegment(session.sessionId)}
+              aria-label="Reset Segment"
+              title="Reset Segment"
+            >
+              ↺ Reset Segment
+            </Button>
             <Button size="sm" variant="secondary" onClick={() => skip(session.sessionId)}>
               ⏭ Skip Segment
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirmReset(true)}>
-              ↺ Reset
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setConfirmCancel(true)}>
               ✕ Cancel
@@ -176,15 +191,6 @@ export function ActiveSession() {
       )}
 
       {/* Dialogs */}
-      <ConfirmDialog
-        open={confirmReset}
-        onClose={() => setConfirmReset(false)}
-        onConfirm={() => { reset(session.sessionId); }}
-        title="Reset Session"
-        message="This will reset the session back to the beginning. Progress will be lost."
-        confirmLabel="Reset"
-        danger
-      />
       <ConfirmDialog
         open={confirmCancel}
         onClose={() => setConfirmCancel(false)}
