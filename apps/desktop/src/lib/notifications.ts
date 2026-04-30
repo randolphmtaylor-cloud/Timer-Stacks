@@ -11,8 +11,22 @@ function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+function isWebNotificationSupported(): boolean {
+  return typeof window !== 'undefined' && 'Notification' in window;
+}
+
 export async function ensureNotificationPermission(): Promise<boolean> {
-  if (!isTauriRuntime()) return false;
+  if (!isTauriRuntime()) {
+    if (!isWebNotificationSupported()) return false;
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied') return false;
+
+    try {
+      return (await Notification.requestPermission()) === 'granted';
+    } catch {
+      return false;
+    }
+  }
 
   try {
     if (await isPermissionGranted()) return true;
@@ -23,8 +37,22 @@ export async function ensureNotificationPermission(): Promise<boolean> {
   }
 }
 
+export async function ensureStartupNotificationPermission(): Promise<boolean> {
+  if (isTauriRuntime()) return ensureNotificationPermission();
+  return isWebNotificationSupported() && Notification.permission === 'granted';
+}
+
 async function notify(title: string, body: string): Promise<void> {
   if (!(await ensureNotificationPermission())) return;
+
+  if (!isTauriRuntime()) {
+    try {
+      new Notification(title, { body });
+    } catch {
+      // Browser notifications are best-effort.
+    }
+    return;
+  }
 
   try {
     sendNotification({ title, body });
@@ -53,7 +81,9 @@ export class WebNotificationService implements INotificationService {
   }
 
   async isPermitted(): Promise<boolean> {
-    if (!isTauriRuntime()) return false;
+    if (!isTauriRuntime()) {
+      return isWebNotificationSupported() && Notification.permission === 'granted';
+    }
     try {
       return isPermissionGranted();
     } catch {

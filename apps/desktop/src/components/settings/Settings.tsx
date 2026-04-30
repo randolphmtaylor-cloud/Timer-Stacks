@@ -2,6 +2,16 @@ import React, { useState } from 'react';
 import { useSettingsStore } from '../../stores/settingsStore.js';
 import { useStackStore } from '../../stores/stackStore.js';
 import { useAuthStore } from '../../stores/authStore.js';
+import {
+  ensureNotificationPermission,
+  notifyStackComplete,
+  notifyTimerComplete,
+} from '../../lib/notifications.js';
+import {
+  playSegmentCompleteSound,
+  playStackCompleteSound,
+  unlockNotificationAudio,
+} from '../../lib/sounds.js';
 import { Card } from '../ui/Card.js';
 import { Button } from '../ui/Button.js';
 
@@ -47,6 +57,7 @@ export function Settings() {
   const { user, isConfigured, isLoading, error, signIn, signUp, signOut } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [testingNotifications, setTestingNotifications] = useState(false);
 
   function exportTemplates() {
     const templates = stacks.filter((s) => s.isTemplate);
@@ -68,6 +79,34 @@ export function Settings() {
     }
     await syncCloud();
     setPassword('');
+  }
+
+  async function testNotifications() {
+    setTestingNotifications(true);
+    try {
+      await unlockNotificationAudio();
+      if (soundEnabled) playSegmentCompleteSound();
+      if (notificationsEnabled) {
+        await ensureNotificationPermission();
+        await notifyTimerComplete('Segment complete', 'Notification test segment is done.');
+      }
+
+      window.setTimeout(() => {
+        if (soundEnabled) playStackCompleteSound();
+        if (notificationsEnabled) {
+          notifyStackComplete('Stack complete', 'Notification test stack is complete.').catch(() => {});
+        }
+      }, 700);
+    } finally {
+      window.setTimeout(() => setTestingNotifications(false), 900);
+    }
+  }
+
+  function handleNotificationsChange(enabled: boolean) {
+    setNotifications(enabled);
+    if (enabled) {
+      ensureNotificationPermission().catch(() => {});
+    }
   }
 
   return (
@@ -188,7 +227,7 @@ export function Settings() {
             label="Enable Notifications"
             description="Show OS notifications when segments and stacks complete"
             checked={notificationsEnabled}
-            onChange={setNotifications}
+            onChange={handleNotificationsChange}
           />
           <ToggleRow
             label="Sound Cues"
@@ -196,6 +235,25 @@ export function Settings() {
             checked={soundEnabled}
             onChange={setSound}
           />
+          <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                Test Alerts
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Play both sounds and send sample segment and stack notifications
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={testNotifications}
+              loading={testingNotifications}
+              className="w-full sm:w-auto"
+            >
+              Test Alerts
+            </Button>
+          </div>
         </Card>
       </section>
 

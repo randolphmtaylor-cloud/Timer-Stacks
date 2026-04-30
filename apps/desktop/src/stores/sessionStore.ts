@@ -13,6 +13,12 @@ import {
   notifyTimerComplete,
 } from '../lib/notifications.js';
 import { vibrateSegmentComplete, vibrateStackComplete } from '../lib/haptics.js';
+import {
+  playSegmentCompleteSound,
+  playStackCompleteSound,
+  unlockNotificationAudio,
+} from '../lib/sounds.js';
+import { useSettingsStore } from './settingsStore.js';
 
 const persistedStorage = new LocalSessionStorage();
 export const sessionManager = new SessionManager();
@@ -28,16 +34,24 @@ sessionManager.subscribe(async (events) => {
         const key = `${event.session.sessionId}:segment:${event.segmentIndex}`;
         if (deliveredCompletions.has(key)) break;
         deliveredCompletions.add(key);
+        const { notificationsEnabled, soundEnabled } = useSettingsStore.getState();
         vibrateSegmentComplete();
-        await notifyTimerComplete('Timer complete', `${event.segmentLabel} is done.`);
+        if (soundEnabled) playSegmentCompleteSound();
+        if (notificationsEnabled) {
+          await notifyTimerComplete('Segment complete', `${event.segmentLabel} is done.`);
+        }
         break;
       }
       case 'stack_completed': {
         const key = `${event.session.sessionId}:stack`;
         if (deliveredCompletions.has(key)) break;
         deliveredCompletions.add(key);
+        const { notificationsEnabled, soundEnabled } = useSettingsStore.getState();
         vibrateStackComplete();
-        await notifyStackComplete('Stack complete', `${event.stackName} is complete.`);
+        if (soundEnabled) playStackCompleteSound();
+        if (notificationsEnabled) {
+          await notifyStackComplete('Stack complete', `${event.stackName} is complete.`);
+        }
         break;
       }
     }
@@ -77,15 +91,38 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     set((s) => ({
       sessions: [...s.sessions.filter((x) => x.sessionId !== session.sessionId), session],
     }));
-    ensureNotificationPermission().catch(() => {});
+    unlockNotificationAudio().catch(() => {});
+    if (useSettingsStore.getState().notificationsEnabled) {
+      ensureNotificationPermission().catch(() => {});
+    }
     return session;
   },
 
-  pause: (sessionId) => { sessionManager.pause(sessionId); get().syncFromManager(); },
-  resume: (sessionId) => { sessionManager.resume(sessionId); get().syncFromManager(); },
-  skip: (sessionId) => { sessionManager.skip(sessionId); get().syncFromManager(); },
-  resetSegment: (sessionId) => { sessionManager.resetSegment(sessionId); get().syncFromManager(); },
-  previousSegment: (sessionId) => { sessionManager.previousSegment(sessionId); get().syncFromManager(); },
+  pause: (sessionId) => {
+    unlockNotificationAudio().catch(() => {});
+    sessionManager.pause(sessionId);
+    get().syncFromManager();
+  },
+  resume: (sessionId) => {
+    unlockNotificationAudio().catch(() => {});
+    sessionManager.resume(sessionId);
+    get().syncFromManager();
+  },
+  skip: (sessionId) => {
+    unlockNotificationAudio().catch(() => {});
+    sessionManager.skip(sessionId);
+    get().syncFromManager();
+  },
+  resetSegment: (sessionId) => {
+    unlockNotificationAudio().catch(() => {});
+    sessionManager.resetSegment(sessionId);
+    get().syncFromManager();
+  },
+  previousSegment: (sessionId) => {
+    unlockNotificationAudio().catch(() => {});
+    sessionManager.previousSegment(sessionId);
+    get().syncFromManager();
+  },
   reset: (sessionId) => { sessionManager.reset(sessionId); get().syncFromManager(); },
 
   cancel: async (sessionId, stack) => {
