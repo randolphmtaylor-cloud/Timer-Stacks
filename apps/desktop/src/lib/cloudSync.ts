@@ -40,14 +40,18 @@ async function readSyncPayload<T extends SyncStatus>(response: Response): Promis
 
   try {
     return JSON.parse(text) as T;
-  } catch {
-    return { ok: false, error: text } as T;
+  } catch (error) {
+    console.error('[cloud-sync] JSON parse failed', error);
+    throw new Error('Malformed sync API response');
   }
 }
 
 async function parseSyncResponse<T extends SyncStatus>(response: Response): Promise<T> {
+  console.info('[cloud-sync] HTTP status', response.status);
   const payload = await readSyncPayload<T>(response);
-  if (!response.ok || !payload.ok) {
+  console.info('[cloud-sync] Parsed JSON', payload);
+
+  if (!response.ok) {
     const detail = payload.error ?? payload.message;
     throw new Error(
       detail
@@ -55,6 +59,11 @@ async function parseSyncResponse<T extends SyncStatus>(response: Response): Prom
         : `Sync API failed with status ${response.status}`,
     );
   }
+
+  if (payload.ok !== true) {
+    throw new Error('Malformed sync API response');
+  }
+
   return payload;
 }
 
@@ -67,6 +76,7 @@ export async function checkCloudSyncStatus(): Promise<SyncStatus> {
     await parseSyncResponse<SchemaResponse>(response);
     return { ok: true, message: 'Cloud sync connected' };
   } catch (error) {
+    console.error('[cloud-sync] Status check failed', error);
     return {
       ok: false,
       message: 'Cloud sync unavailable',

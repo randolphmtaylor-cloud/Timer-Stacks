@@ -4,6 +4,7 @@ import type { SessionRecord, TimerStack } from '@timer-stacks/core';
 
 type SyncStatus = {
   ok: boolean;
+  message?: string;
   error?: string;
 };
 
@@ -28,11 +29,36 @@ async function getDeviceId(): Promise<string> {
   return generated;
 }
 
-async function parseSyncResponse<T extends SyncStatus>(response: Response): Promise<T> {
-  const payload = (await response.json().catch(() => ({}))) as T;
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.error ?? `Sync API failed with status ${response.status}`);
+async function readSyncPayload<T extends SyncStatus>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text) return {} as T;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    console.error('[cloud-sync] JSON parse failed', error);
+    throw new Error('Malformed sync API response');
   }
+}
+
+async function parseSyncResponse<T extends SyncStatus>(response: Response): Promise<T> {
+  console.info('[cloud-sync] HTTP status', response.status);
+  const payload = await readSyncPayload<T>(response);
+  console.info('[cloud-sync] Parsed JSON', payload);
+
+  if (!response.ok) {
+    const detail = payload.error ?? payload.message;
+    throw new Error(
+      detail
+        ? `Sync API failed with status ${response.status}: ${detail}`
+        : `Sync API failed with status ${response.status}`,
+    );
+  }
+
+  if (payload.ok !== true) {
+    throw new Error('Malformed sync API response');
+  }
+
   return payload;
 }
 

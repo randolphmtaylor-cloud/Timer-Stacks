@@ -115,6 +115,7 @@ export function Settings() {
       await syncCloud();
       await refreshSyncStatus();
     } catch (error) {
+      console.error('[cloud-sync] Sync now failed', error);
       setSyncStatus('unavailable');
       setSyncError(error instanceof Error ? error.message : 'Cloud sync failed');
     } finally {

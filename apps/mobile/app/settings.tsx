@@ -14,6 +14,18 @@ import { useStackStore } from '../src/stores/stackStore.js';
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 const syncApiBaseUrl = env.EXPO_PUBLIC_SYNC_API_URL ?? '';
 
+async function readStatusPayload(response: Response): Promise<{ ok?: boolean; error?: string; message?: string }> {
+  const text = await response.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text) as { ok?: boolean; error?: string; message?: string };
+  } catch (error) {
+    console.error('[cloud-sync] JSON parse failed', error);
+    throw new Error('Malformed sync API response');
+  }
+}
+
 export default function SettingsScreen() {
   const dark = useColorScheme() === 'dark';
   const colors = dark ? DARK : LIGHT;
@@ -34,14 +46,11 @@ export default function SettingsScreen() {
         method: 'POST',
         headers: { accept: 'application/json' },
       });
-      const text = await response.text();
-      let payload: { ok?: boolean; error?: string; message?: string };
-      try {
-        payload = text ? JSON.parse(text) : {};
-      } catch {
-        payload = { ok: false, error: text };
-      }
-      if (!response.ok || !payload.ok) {
+      console.info('[cloud-sync] HTTP status', response.status);
+      const payload = await readStatusPayload(response);
+      console.info('[cloud-sync] Parsed JSON', payload);
+
+      if (!response.ok) {
         const detail = payload.error ?? payload.message;
         throw new Error(
           detail
@@ -49,9 +58,15 @@ export default function SettingsScreen() {
             : `Sync API failed with status ${response.status}`,
         );
       }
+
+      if (payload.ok !== true) {
+        throw new Error('Malformed sync API response');
+      }
+
       setSyncStatus('connected');
       setSyncError(null);
     } catch (error) {
+      console.error('[cloud-sync] Status check failed', error);
       setSyncStatus('unavailable');
       setSyncError(error instanceof Error ? error.message : String(error));
     }
@@ -63,6 +78,7 @@ export default function SettingsScreen() {
       await syncCloud();
       await refreshSyncStatus();
     } catch (error) {
+      console.error('[cloud-sync] Sync now failed', error);
       setSyncStatus('unavailable');
       setSyncError(error instanceof Error ? error.message : String(error));
     } finally {
