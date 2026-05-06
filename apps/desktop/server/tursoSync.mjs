@@ -259,14 +259,14 @@ export async function deleteStack(stackId) {
 export async function handleSyncStatusRequest(req, res) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
-      'access-control-allow-methods': 'GET, OPTIONS',
+      'access-control-allow-methods': 'GET, POST, OPTIONS',
       'access-control-allow-origin': '*',
     });
     res.end();
     return;
   }
 
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'POST') {
     writeJson(res, 405, { ok: false, error: 'Method not allowed' });
     return;
   }

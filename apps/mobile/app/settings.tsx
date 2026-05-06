@@ -30,10 +30,25 @@ export default function SettingsScreen() {
   async function refreshSyncStatus() {
     setSyncStatus('checking');
     try {
-      const response = await fetch(`${syncApiBaseUrl}/api/sync/status`);
-      if (!response.ok) throw new Error(`Sync API failed with status ${response.status}`);
-      const payload = await response.json();
-      if (!payload.ok) throw new Error(payload.error ?? 'Sync API is unavailable');
+      const response = await fetch(`${syncApiBaseUrl}/api/sync/schema`, {
+        method: 'POST',
+        headers: { accept: 'application/json' },
+      });
+      const text = await response.text();
+      let payload: { ok?: boolean; error?: string; message?: string };
+      try {
+        payload = text ? JSON.parse(text) : {};
+      } catch {
+        payload = { ok: false, error: text };
+      }
+      if (!response.ok || !payload.ok) {
+        const detail = payload.error ?? payload.message;
+        throw new Error(
+          detail
+            ? `Sync API failed with status ${response.status}: ${detail}`
+            : `Sync API failed with status ${response.status}`,
+        );
+      }
       setSyncStatus('connected');
       setSyncError(null);
     } catch (error) {

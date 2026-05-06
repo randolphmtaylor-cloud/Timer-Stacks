@@ -10,6 +10,10 @@ type StacksResponse = SyncStatus & {
   stacks?: TimerStack[];
 };
 
+type SchemaResponse = SyncStatus & {
+  tables?: string[];
+};
+
 const DEVICE_ID_KEY = 'timer-stacks-device-id';
 const syncApiBaseUrl = import.meta.env.VITE_SYNC_API_BASE_URL ?? '';
 
@@ -30,21 +34,37 @@ function getDeviceId(): string {
   }
 }
 
+async function readSyncPayload<T extends SyncStatus>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text) return {} as T;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return { ok: false, error: text } as T;
+  }
+}
+
 async function parseSyncResponse<T extends SyncStatus>(response: Response): Promise<T> {
-  const payload = (await response.json().catch(() => ({}))) as T;
+  const payload = await readSyncPayload<T>(response);
   if (!response.ok || !payload.ok) {
-    throw new Error(payload.error ?? `Sync API failed with status ${response.status}`);
+    const detail = payload.error ?? payload.message;
+    throw new Error(
+      detail
+        ? `Sync API failed with status ${response.status}: ${detail}`
+        : `Sync API failed with status ${response.status}`,
+    );
   }
   return payload;
 }
 
 export async function checkCloudSyncStatus(): Promise<SyncStatus> {
   try {
-    const response = await fetch(syncUrl('/api/sync/status'), {
-      method: 'GET',
+    const response = await fetch(syncUrl('/api/sync/schema'), {
+      method: 'POST',
       headers: { accept: 'application/json' },
     });
-    await parseSyncResponse<SyncStatus>(response);
+    await parseSyncResponse<SchemaResponse>(response);
     return { ok: true, message: 'Cloud sync connected' };
   } catch (error) {
     return {
