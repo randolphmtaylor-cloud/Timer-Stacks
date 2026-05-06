@@ -145,7 +145,7 @@ export async function createTursoSchema(options = {}) {
 
   return {
     ok: true,
-    message: 'Turso schema is ready',
+    status: 'connected',
     tables: schemaTables,
   };
 }
@@ -169,8 +169,11 @@ export async function handleSchemaRequest(req, res) {
   }
 
   try {
-    const result = await createTursoSchema();
-    writeJson(res, 200, result);
+    await createTursoSchema();
+    writeJson(res, 200, {
+      ok: true,
+      status: 'connected',
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[sync/schema] Turso schema setup failed:', message);

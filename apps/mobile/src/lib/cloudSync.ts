@@ -4,6 +4,7 @@ import type { SessionRecord, TimerStack } from '@timer-stacks/core';
 
 type SyncStatus = {
   ok: boolean;
+  status?: string;
   message?: string;
   error?: string;
 };
@@ -31,6 +32,7 @@ async function getDeviceId(): Promise<string> {
 
 async function readSyncPayload<T extends SyncStatus>(response: Response): Promise<T> {
   const text = await response.text();
+  console.info('[cloud-sync] Raw response body', text);
   if (!text) return {} as T;
 
   try {
@@ -56,7 +58,8 @@ async function parseSyncResponse<T extends SyncStatus>(response: Response): Prom
   }
 
   if (payload.ok !== true) {
-    throw new Error('Malformed sync API response');
+    const detail = payload.error ?? payload.message;
+    throw new Error(detail ?? 'Sync API response did not include ok: true');
   }
 
   return payload;

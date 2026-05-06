@@ -20,14 +20,25 @@ export default defineConfig(({ mode }) => {
       {
         name: 'timer-stacks-sync-schema-api',
         configureServer(server) {
-          server.middlewares.use('/api/sync/schema', async (req, res) => {
-            await handleSchemaRequest(req, res);
-          });
-          server.middlewares.use('/api/sync/status', async (req, res) => {
-            await handleSyncStatusRequest(req, res);
-          });
-          server.middlewares.use('/api/sync/stacks', async (req, res) => {
-            await handleStacksRequest(req, res);
+          server.middlewares.use(async (req, res, next) => {
+            const url = new URL(req.url ?? '/', 'http://localhost');
+
+            if (url.pathname === '/api/sync/schema') {
+              await handleSchemaRequest(req, res);
+              return;
+            }
+
+            if (url.pathname === '/api/sync/status') {
+              await handleSyncStatusRequest(req, res);
+              return;
+            }
+
+            if (url.pathname === '/api/sync/stacks') {
+              await handleStacksRequest(req, res);
+              return;
+            }
+
+            next();
           });
         },
       },

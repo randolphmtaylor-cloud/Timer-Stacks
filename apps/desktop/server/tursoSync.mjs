@@ -275,7 +275,7 @@ export async function handleSyncStatusRequest(req, res) {
     await createTursoSchema();
     writeJson(res, 200, {
       ok: true,
-      message: 'Cloud sync connected',
+      status: 'connected',
     });
   } catch (error) {
     writeJson(res, 503, {

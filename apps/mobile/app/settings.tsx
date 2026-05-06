@@ -14,12 +14,15 @@ import { useStackStore } from '../src/stores/stackStore.js';
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 const syncApiBaseUrl = env.EXPO_PUBLIC_SYNC_API_URL ?? '';
 
-async function readStatusPayload(response: Response): Promise<{ ok?: boolean; error?: string; message?: string }> {
+async function readStatusPayload(
+  response: Response,
+): Promise<{ ok?: boolean; status?: string; error?: string; message?: string }> {
   const text = await response.text();
+  console.info('[cloud-sync] Raw response body', text);
   if (!text) return {};
 
   try {
-    return JSON.parse(text) as { ok?: boolean; error?: string; message?: string };
+    return JSON.parse(text) as { ok?: boolean; status?: string; error?: string; message?: string };
   } catch (error) {
     console.error('[cloud-sync] JSON parse failed', error);
     throw new Error('Malformed sync API response');
@@ -60,7 +63,8 @@ export default function SettingsScreen() {
       }
 
       if (payload.ok !== true) {
-        throw new Error('Malformed sync API response');
+        const detail = payload.error ?? payload.message;
+        throw new Error(detail ?? 'Sync API response did not include ok: true');
       }
 
       setSyncStatus('connected');
