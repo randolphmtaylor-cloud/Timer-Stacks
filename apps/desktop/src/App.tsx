@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useSettingsStore } from './stores/settingsStore.js';
 import { useStackStore } from './stores/stackStore.js';
 import { useSessionStore } from './stores/sessionStore.js';
-import { useAuthStore } from './stores/authStore.js';
 import { ensureStartupNotificationPermission } from './lib/notifications.js';
 import { unlockNotificationAudio } from './lib/sounds.js';
 import { Layout } from './components/layout/Layout.js';
@@ -42,15 +41,12 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 export default function App() {
   const { load: loadStacks, stacks } = useStackStore();
   const { hydrate: hydrateSessions } = useSessionStore();
-  const { initialize: initializeAuth, user } = useAuthStore();
   const { notificationsEnabled } = useSettingsStore();
-  const { syncCloud } = useStackStore();
 
   // Bootstrap
   useEffect(() => {
-    initializeAuth();
     loadStacks();
-  }, [initializeAuth, loadStacks]);
+  }, [loadStacks]);
 
   useEffect(() => {
     if (notificationsEnabled) {
@@ -69,10 +65,6 @@ export default function App() {
       window.removeEventListener('keydown', unlock);
     };
   }, []);
-
-  useEffect(() => {
-    if (user) syncCloud();
-  }, [user, syncCloud]);
 
   // Restore sessions after stacks are loaded
   useEffect(() => {

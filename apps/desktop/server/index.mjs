@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { loadDesktopEnv } from './env.mjs';
 import { handleSchemaRequest, writeJson } from './tursoSchema.mjs';
+import { handleStacksRequest, handleSyncStatusRequest } from './tursoSync.mjs';
 
 loadDesktopEnv();
 
@@ -15,6 +16,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/sync/status') {
+    await handleSyncStatusRequest(req, res);
+    return;
+  }
+
+  if (url.pathname === '/api/sync/stacks') {
+    await handleStacksRequest(req, res);
+    return;
+  }
+
   writeJson(res, 404, {
     ok: false,
     error: 'Not found',
@@ -24,6 +35,8 @@ const server = http.createServer(async (req, res) => {
 server.listen(port, host, () => {
   console.log(`[sync-api] Listening on http://${host}:${port}`);
   console.log(`[sync-api] Schema endpoint ready at http://${host}:${port}/api/sync/schema`);
+  console.log(`[sync-api] Status endpoint ready at http://${host}:${port}/api/sync/status`);
+  console.log(`[sync-api] Stacks endpoint ready at http://${host}:${port}/api/sync/stacks`);
 });
 
 server.on('error', (error) => {

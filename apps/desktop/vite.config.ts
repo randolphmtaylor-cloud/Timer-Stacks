@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { logTursoEnvStatus } from './server/env.mjs';
 import { handleSchemaRequest } from './server/tursoSchema.mjs';
+import { handleStacksRequest, handleSyncStatusRequest } from './server/tursoSync.mjs';
 
 export default defineConfig(({ mode }) => {
   const serverEnv = loadEnv(mode, __dirname, '');
@@ -21,6 +22,12 @@ export default defineConfig(({ mode }) => {
         configureServer(server) {
           server.middlewares.use('/api/sync/schema', async (req, res) => {
             await handleSchemaRequest(req, res);
+          });
+          server.middlewares.use('/api/sync/status', async (req, res) => {
+            await handleSyncStatusRequest(req, res);
+          });
+          server.middlewares.use('/api/sync/stacks', async (req, res) => {
+            await handleStacksRequest(req, res);
           });
         },
       },

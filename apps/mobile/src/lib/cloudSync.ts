@@ -1,158 +1,100 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { v4 as uuidv4 } from 'uuid';
 import type { SessionRecord, TimerStack } from '@timer-stacks/core';
-import { supabase } from './supabase.js';
 
-type RemoteSegment = {
-  id: string;
-  label: string;
-  duration_ms: number;
-  color: string | null;
-  position: number;
+type SyncStatus = {
+  ok: boolean;
+  error?: string;
 };
 
-type RemoteStack = {
-  id: string;
-  name: string;
-  description: string | null;
-  icon: string | null;
-  total_duration_ms: number;
-  is_template: boolean;
-  created_at: string;
-  updated_at: string;
-  segments?: RemoteSegment[];
+type StacksResponse = SyncStatus & {
+  stacks?: TimerStack[];
 };
 
-const isoFromMs = (ms: number) => new Date(ms).toISOString();
-const msFromIso = (value: string) => {
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : Date.now();
-};
+const DEVICE_ID_KEY = 'timer-stacks-device-id';
+const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+const syncApiBaseUrl = env.EXPO_PUBLIC_SYNC_API_URL ?? '';
 
-function fromRemoteStack(stack: RemoteStack): TimerStack {
-  return {
-    stackId: stack.id,
-    name: stack.name,
-    description: stack.description ?? undefined,
-    icon: stack.icon ?? undefined,
-    totalDurationMs: stack.total_duration_ms,
-    isTemplate: stack.is_template,
-    createdAt: msFromIso(stack.created_at),
-    updatedAt: msFromIso(stack.updated_at),
-    segments: [...(stack.segments ?? [])]
-      .sort((a, b) => a.position - b.position)
-      .map((segment) => ({
-        segmentId: segment.id,
-        label: segment.label,
-        durationMs: segment.duration_ms,
-        color: segment.color ?? undefined,
-      })),
-  };
+function syncUrl(path: string): string {
+  return `${syncApiBaseUrl}${path}`;
 }
 
-async function getUserId(): Promise<string | null> {
-  if (!supabase) return null;
-  const { data } = await supabase.auth.getUser();
-  return data.user?.id ?? null;
+async function getDeviceId(): Promise<string> {
+  const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
+  if (existing) return existing;
+
+  const generated = uuidv4();
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}
+
+async function parseSyncResponse<T extends SyncStatus>(response: Response): Promise<T> {
+  const payload = (await response.json().catch(() => ({}))) as T;
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error ?? `Sync API failed with status ${response.status}`);
+  }
+  return payload;
 }
 
 export async function fetchCloudStacks(): Promise<TimerStack[]> {
-  if (!supabase) return [];
-  const userId = await getUserId();
-  if (!userId) return [];
-  const { data, error } = await supabase
-    .from('stacks')
-    .select(
-      'id,name,description,icon,total_duration_ms,is_template,created_at,updated_at,segments(id,label,duration_ms,color,position)',
-    )
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false });
-  if (error) throw error;
-  return ((data ?? []) as RemoteStack[]).map(fromRemoteStack);
+  const response = await fetch(syncUrl('/api/sync/stacks'), {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+  });
+  const payload = await parseSyncResponse<StacksResponse>(response);
+  return payload.stacks ?? [];
 }
 
 export async function upsertCloudStack(stack: TimerStack): Promise<void> {
-  if (!supabase) return;
-  const userId = await getUserId();
-  if (!userId) return;
-  const { error: stackError } = await supabase.from('stacks').upsert(
-    {
-      id: stack.stackId,
-      user_id: userId,
-      name: stack.name,
-      description: stack.description ?? null,
-      icon: stack.icon ?? null,
-      total_duration_ms: stack.totalDurationMs,
-      is_template: stack.isTemplate,
-      created_at: isoFromMs(stack.createdAt),
-      updated_at: isoFromMs(stack.updatedAt),
+  await upsertCloudStacks([stack]);
+}
+
+export async function upsertCloudStacks(stacks: TimerStack[]): Promise<TimerStack[]> {
+  const response = await fetch(syncUrl('/api/sync/stacks'), {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
     },
-    { onConflict: 'id' },
-  );
-  if (stackError) throw stackError;
-
-  const { error: deleteError } = await supabase
-    .from('segments')
-    .delete()
-    .eq('stack_id', stack.stackId)
-    .eq('user_id', userId);
-  if (deleteError) throw deleteError;
-
-  if (stack.segments.length === 0) return;
-  const { error: segmentError } = await supabase.from('segments').insert(
-    stack.segments.map((segment, position) => ({
-      id: segment.segmentId,
-      user_id: userId,
-      stack_id: stack.stackId,
-      label: segment.label,
-      duration_ms: segment.durationMs,
-      color: segment.color ?? null,
-      position,
-    })),
-  );
-  if (segmentError) throw segmentError;
+    body: JSON.stringify({
+      deviceId: await getDeviceId(),
+      stacks,
+    }),
+  });
+  const payload = await parseSyncResponse<StacksResponse>(response);
+  return payload.stacks ?? stacks;
 }
 
 export async function deleteCloudStack(stackId: string): Promise<void> {
-  if (!supabase) return;
-  const userId = await getUserId();
-  if (!userId) return;
-  const { error } = await supabase.from('stacks').delete().eq('id', stackId).eq('user_id', userId);
-  if (error) throw error;
+  const response = await fetch(syncUrl('/api/sync/stacks'), {
+    method: 'DELETE',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      deviceId: await getDeviceId(),
+      stackId,
+    }),
+  });
+  await parseSyncResponse<SyncStatus>(response);
 }
 
 export async function mergeCloudStacks(localStacks: TimerStack[]): Promise<TimerStack[]> {
-  if (!supabase) return localStacks;
-  const userId = await getUserId();
-  if (!userId) return localStacks;
-  const remoteStacks = await fetchCloudStacks();
+  const remoteStacks = await upsertCloudStacks(localStacks);
   const merged = new Map<string, TimerStack>();
+
   for (const stack of remoteStacks) merged.set(stack.stackId, stack);
-  for (const local of localStacks) {
-    const remote = merged.get(local.stackId);
-    if (!remote || local.updatedAt > remote.updatedAt) {
-      merged.set(local.stackId, local);
-      upsertCloudStack(local).catch(() => {});
+  for (const stack of localStacks) {
+    const remote = merged.get(stack.stackId);
+    if (!remote || stack.updatedAt > remote.updatedAt) {
+      merged.set(stack.stackId, stack);
     }
   }
+
   return [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export async function saveCloudSessionRecord(record: SessionRecord): Promise<void> {
-  if (!supabase) return;
-  const userId = await getUserId();
-  if (!userId) return;
-  await supabase.from('sessions').upsert(
-    {
-      id: record.sessionId,
-      user_id: userId,
-      stack_id: record.stackId,
-      stack_name: record.stackName,
-      status: record.status,
-      started_at: isoFromMs(record.startedAt),
-      ended_at: isoFromMs(record.endedAt),
-      total_elapsed_ms: record.totalElapsedMs,
-      segments_completed: record.segmentsCompleted,
-      total_segments: record.totalSegments,
-    },
-    { onConflict: 'id' },
-  );
+export async function saveCloudSessionRecord(_record: SessionRecord): Promise<void> {
+  // Session history remains local for now; stack sync is handled by the Turso API.
 }

@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import type { TimerStack, CreateStackInput, UpdateStackInput } from '@timer-stacks/core';
 import { AsyncStackStorage } from '../lib/storage.js';
 import { deleteCloudStack, mergeCloudStacks, upsertCloudStack } from '../lib/cloudSync.js';
-import { useAuthStore } from './authStore.js';
 
 const storage = new AsyncStackStorage();
 
@@ -26,14 +25,10 @@ export const useStackStore = create<StackState>((set, get) => ({
     await storage.seedIfEmpty();
     const stacks = await storage.getAll();
     set({ stacks, isLoading: false });
-    if (useAuthStore.getState().user) {
-      get().syncCloud().catch(() => {});
-    }
+    get().syncCloud().catch(() => {});
   },
 
   syncCloud: async () => {
-    const { user, isConfigured } = useAuthStore.getState();
-    if (!isConfigured || !user) return;
     const localStacks = await storage.getAll();
     const stacks = await mergeCloudStacks(localStacks);
     await storage.replaceAll(stacks);

@@ -7,30 +7,52 @@ import {
   StyleSheet,
   useColorScheme,
   TouchableOpacity,
-  TextInput,
 } from 'react-native';
 import { useSettingsStore } from '../src/stores/settingsStore.js';
-import { useAuthStore } from '../src/stores/authStore.js';
 import { useStackStore } from '../src/stores/stackStore.js';
+
+const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+const syncApiBaseUrl = env.EXPO_PUBLIC_SYNC_API_URL ?? '';
 
 export default function SettingsScreen() {
   const dark = useColorScheme() === 'dark';
   const colors = dark ? DARK : LIGHT;
   const { theme, notificationsEnabled, soundEnabled, setTheme, setNotifications, setSound } = useSettingsStore();
-  const { user, isConfigured, isLoading, error, signIn, signUp, signOut } = useAuthStore();
   const { syncCloud } = useStackStore();
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
+  const [syncStatus, setSyncStatus] = React.useState<'checking' | 'connected' | 'unavailable'>('checking');
+  const [syncError, setSyncError] = React.useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = React.useState(false);
 
-  async function handleAuth(action: 'sign-in' | 'sign-up') {
-    if (!email.trim() || !password) return;
-    if (action === 'sign-in') {
-      await signIn(email.trim(), password);
-    } else {
-      await signUp(email.trim(), password);
+  React.useEffect(() => {
+    refreshSyncStatus().catch(() => {});
+  }, []);
+
+  async function refreshSyncStatus() {
+    setSyncStatus('checking');
+    try {
+      const response = await fetch(`${syncApiBaseUrl}/api/sync/status`);
+      if (!response.ok) throw new Error(`Sync API failed with status ${response.status}`);
+      const payload = await response.json();
+      if (!payload.ok) throw new Error(payload.error ?? 'Sync API is unavailable');
+      setSyncStatus('connected');
+      setSyncError(null);
+    } catch (error) {
+      setSyncStatus('unavailable');
+      setSyncError(error instanceof Error ? error.message : String(error));
     }
-    await syncCloud();
-    setPassword('');
+  }
+
+  async function handleSyncNow() {
+    setIsSyncing(true);
+    try {
+      await syncCloud();
+      await refreshSyncStatus();
+    } catch (error) {
+      setSyncStatus('unavailable');
+      setSyncError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSyncing(false);
+    }
   }
 
   return (
@@ -38,72 +60,34 @@ export default function SettingsScreen() {
       {/* Cloud sync */}
       <Text style={[styles.sectionLabel, { color: colors.muted }]}>CLOUD SYNC</Text>
       <View style={[styles.card, { backgroundColor: colors.card }]}>
-        {!isConfigured ? (
-          <View style={styles.authBlock}>
-            <Text style={[styles.rowLabel, { color: colors.text }]}>Supabase is not configured</Text>
-            <Text style={[styles.rowSub, { color: colors.muted }]}>
-              Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable login and sync.
-            </Text>
+        <View style={styles.authBlock}>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>
+            {syncStatus === 'connected'
+              ? 'Cloud sync connected'
+              : syncStatus === 'checking'
+                ? 'Checking cloud sync'
+                : 'Cloud sync unavailable'}
+          </Text>
+          <Text style={[styles.rowSub, { color: colors.muted }]}>
+            Timer Stacks syncs through the Turso API using server-side credentials.
+          </Text>
+          {syncError && <Text style={styles.errorInline}>{syncError}</Text>}
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: '#6366f1' }]}
+              onPress={handleSyncNow}
+              disabled={isSyncing}
+            >
+              <Text style={styles.buttonText}>Sync Now</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: colors.soft }]}
+              onPress={refreshSyncStatus}
+            >
+              <Text style={[styles.buttonText, { color: colors.text }]}>Check Status</Text>
+            </TouchableOpacity>
           </View>
-        ) : user ? (
-          <View style={styles.authBlock}>
-            <Text style={[styles.rowLabel, { color: colors.text }]}>Signed in</Text>
-            <Text style={[styles.rowSub, { color: colors.muted }]}>{user.email}</Text>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: '#6366f1' }]}
-                onPress={() => syncCloud()}
-                disabled={isLoading}
-              >
-                <Text style={styles.buttonText}>Sync Now</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: colors.soft }]}
-                onPress={() => signOut()}
-                disabled={isLoading}
-              >
-                <Text style={[styles.buttonText, { color: colors.text }]}>Sign Out</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.authBlock}>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              style={[styles.input, { color: colors.text, borderColor: colors.divider }]}
-            />
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Password"
-              placeholderTextColor={colors.muted}
-              secureTextEntry
-              style={[styles.input, { color: colors.text, borderColor: colors.divider }]}
-            />
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: '#6366f1' }]}
-                onPress={() => handleAuth('sign-in')}
-                disabled={isLoading}
-              >
-                <Text style={styles.buttonText}>Sign In</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: colors.soft }]}
-                onPress={() => handleAuth('sign-up')}
-                disabled={isLoading}
-              >
-                <Text style={[styles.buttonText, { color: colors.text }]}>Create Account</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-        {error && <Text style={styles.error}>{error}</Text>}
+        </View>
       </View>
 
       {/* Appearance */}
@@ -169,9 +153,8 @@ const styles = StyleSheet.create({
   check: { color: '#6366f1', fontSize: 18 },
   version: { textAlign: 'center', fontSize: 13, marginTop: 40 },
   authBlock: { padding: 18, gap: 12 },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 15 },
   buttonRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   button: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11 },
   buttonText: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
-  error: { color: '#ef4444', fontSize: 13, paddingHorizontal: 18, paddingBottom: 18 },
+  errorInline: { color: '#ef4444', fontSize: 13 },
 });

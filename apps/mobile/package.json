@@ -16,7 +16,6 @@
   "dependencies": {
     "@expo/vector-icons": "^14.0.0",
     "@react-native-async-storage/async-storage": "1.23.1",
-    "@supabase/supabase-js": "^2.105.1",
     "@timer-stacks/core": "workspace:*",
     "@timer-stacks/storage": "workspace:*",
     "expo": "~51.0.0",

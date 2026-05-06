@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSettingsStore } from '../../stores/settingsStore.js';
 import { useStackStore } from '../../stores/stackStore.js';
-import { useAuthStore } from '../../stores/authStore.js';
 import {
   ensureNotificationPermission,
   notifyStackComplete,
   notifyTimerComplete,
 } from '../../lib/notifications.js';
+import { checkCloudSyncStatus } from '../../lib/cloudSync.js';
 import {
   playSegmentCompleteSound,
   playStackCompleteSound,
@@ -54,32 +54,14 @@ export function Settings() {
   const { theme, notificationsEnabled, soundEnabled, setTheme, setNotifications, setSound } =
     useSettingsStore();
   const { stacks, syncCloud } = useStackStore();
-  const { user, isConfigured, isLoading, error, signIn, signUp, signOut } = useAuthStore();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [testingNotifications, setTestingNotifications] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking');
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  function exportTemplates() {
-    const templates = stacks.filter((s) => s.isTemplate);
-    const blob = new Blob([JSON.stringify(templates, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'timer-stacks-templates.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function handleAuth(action: 'sign-in' | 'sign-up') {
-    if (!email.trim() || !password) return;
-    if (action === 'sign-in') {
-      await signIn(email.trim(), password);
-    } else {
-      await signUp(email.trim(), password);
-    }
-    await syncCloud();
-    setPassword('');
-  }
+  useEffect(() => {
+    refreshSyncStatus().catch(() => {});
+  }, []);
 
   async function testNotifications() {
     setTestingNotifications(true);
@@ -109,6 +91,37 @@ export function Settings() {
     }
   }
 
+  function exportTemplates() {
+    const templates = stacks.filter((s) => s.isTemplate);
+    const blob = new Blob([JSON.stringify(templates, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'timer-stacks-templates.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function refreshSyncStatus() {
+    setSyncStatus('checking');
+    const status = await checkCloudSyncStatus();
+    setSyncStatus(status.ok ? 'connected' : 'unavailable');
+    setSyncError(status.ok ? null : status.error ?? null);
+  }
+
+  async function handleSyncNow() {
+    setIsSyncing(true);
+    try {
+      await syncCloud();
+      await refreshSyncStatus();
+    } catch (error) {
+      setSyncStatus('unavailable');
+      setSyncError(error instanceof Error ? error.message : 'Cloud sync failed');
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-5 sm:px-6 md:p-8">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-8">Settings</h1>
@@ -119,76 +132,29 @@ export function Settings() {
           Cloud Sync
         </h2>
         <Card>
-          {!isConfigured ? (
+          <div className="space-y-4">
             <div>
               <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                Supabase is not configured
+                {syncStatus === 'connected'
+                  ? 'Cloud sync connected'
+                  : syncStatus === 'checking'
+                    ? 'Checking cloud sync'
+                    : 'Cloud sync unavailable'}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable login and cloud sync.
+                Timer Stacks syncs through the Turso API using server-side credentials.
               </p>
+              {syncError && <p className="text-xs text-red-500 mt-2">{syncError}</p>}
             </div>
-          ) : user ? (
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  Signed in
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 break-all">
-                  {user.email}
-                </p>
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:flex">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => syncCloud()}
-                  loading={isLoading}
-                >
-                  Sync Now
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => signOut()} loading={isLoading}>
-                  Sign Out
-                </Button>
-              </div>
+            <div className="grid grid-cols-1 gap-2 sm:flex">
+              <Button size="sm" variant="secondary" onClick={handleSyncNow} loading={isSyncing}>
+                Sync Now
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => refreshSyncStatus()}>
+                Check Status
+              </Button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email"
-                className="w-full min-h-11 rounded-xl border border-surface-300 bg-white px-4 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/30 dark:border-gray-600 dark:bg-surface-800 dark:text-gray-100"
-              />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                className="w-full min-h-11 rounded-xl border border-surface-300 bg-white px-4 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/30 dark:border-gray-600 dark:bg-surface-800 dark:text-gray-100"
-              />
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <Button
-                  variant="primary"
-                  onClick={() => handleAuth('sign-in')}
-                  loading={isLoading}
-                  disabled={!email.trim() || !password}
-                >
-                  Sign In
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => handleAuth('sign-up')}
-                  loading={isLoading}
-                  disabled={!email.trim() || !password}
-                >
-                  Create Account
-                </Button>
-              </div>
-            </div>
-          )}
-          {error && <p className="text-xs text-red-500 mt-3">{error}</p>}
+          </div>
         </Card>
       </section>
 
