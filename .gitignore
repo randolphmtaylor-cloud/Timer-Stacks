@@ -12,3 +12,4 @@ build/
 target/
 *.db
 *.sqlite
+.claude/
