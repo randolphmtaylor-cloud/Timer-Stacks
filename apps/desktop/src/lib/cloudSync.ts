@@ -11,12 +11,10 @@ type StacksResponse = SyncStatus & {
   stacks?: TimerStack[];
 };
 
-type SchemaResponse = SyncStatus & {
-  status: string;
-};
-
 const DEVICE_ID_KEY = 'timer-stacks-device-id';
-const syncApiBaseUrl = import.meta.env.VITE_SYNC_API_BASE_URL ?? '';
+const syncApiBaseUrl = (import.meta.env.VITE_SYNC_API_BASE_URL ?? '').replace(/\/$/, '');
+const SYNC_STATUS_PATH = '/api/sync/status';
+const SYNC_STACKS_PATH = '/api/sync/stacks';
 
 function syncUrl(path: string): string {
   return `${syncApiBaseUrl}${path}`;
@@ -35,48 +33,107 @@ function getDeviceId(): string {
   }
 }
 
-async function readSyncPayload<T extends SyncStatus>(response: Response): Promise<T> {
+async function readSyncPayload<T extends SyncStatus>(
+  response: Response,
+  context: { method: string; url: string },
+): Promise<T> {
   const text = await response.text();
-  console.info('[cloud-sync] Raw response body', text);
+  console.info('[cloud-sync] Raw response body', {
+    method: context.method,
+    url: context.url,
+    status: response.status,
+    body: text,
+  });
   if (!text) return {} as T;
 
   try {
     return JSON.parse(text) as T;
   } catch (error) {
-    console.error('[cloud-sync] JSON parse failed', error);
-    throw new Error('Malformed sync API response');
+    console.error('[cloud-sync] JSON parse failed', {
+      method: context.method,
+      url: context.url,
+      status: response.status,
+      contentType: response.headers.get('content-type'),
+      bodyPreview: text.slice(0, 500),
+      error,
+    });
+    throw new Error(
+      `Malformed sync API response from ${context.method} ${context.url} (HTTP ${response.status})`,
+    );
   }
 }
 
-async function parseSyncResponse<T extends SyncStatus>(response: Response): Promise<T> {
-  console.info('[cloud-sync] HTTP status', response.status);
-  const payload = await readSyncPayload<T>(response);
-  console.info('[cloud-sync] Parsed JSON', payload);
+async function parseSyncResponse<T extends SyncStatus>(
+  response: Response,
+  context: { method: string; url: string },
+): Promise<T> {
+  console.info('[cloud-sync] HTTP status', {
+    method: context.method,
+    url: context.url,
+    status: response.status,
+  });
+  const payload = await readSyncPayload<T>(response, context);
+  console.info('[cloud-sync] Parsed JSON', {
+    method: context.method,
+    url: context.url,
+    payload,
+  });
 
   if (!response.ok) {
     const detail = payload.error ?? payload.message;
+    console.error('[cloud-sync] Sync API returned an error response', {
+      method: context.method,
+      url: context.url,
+      status: response.status,
+      payload,
+    });
     throw new Error(
       detail
-        ? `Sync API failed with status ${response.status}: ${detail}`
-        : `Sync API failed with status ${response.status}`,
+        ? `Sync API failed for ${context.method} ${context.url} with status ${response.status}: ${detail}`
+        : `Sync API failed for ${context.method} ${context.url} with status ${response.status}`,
     );
   }
 
   if (payload.ok !== true) {
     const detail = payload.error ?? payload.message;
-    throw new Error(detail ?? 'Sync API response did not include ok: true');
+    console.error('[cloud-sync] Sync API response missing ok: true', {
+      method: context.method,
+      url: context.url,
+      payload,
+    });
+    throw new Error(
+      detail ?? `Sync API response from ${context.method} ${context.url} did not include ok: true`,
+    );
   }
 
   return payload;
 }
 
+async function requestSync<T extends SyncStatus>(
+  path: string,
+  init: RequestInit & { method: string },
+): Promise<T> {
+  const url = syncUrl(path);
+
+  try {
+    const response = await fetch(url, init);
+    return await parseSyncResponse<T>(response, { method: init.method, url });
+  } catch (error) {
+    console.error('[cloud-sync] Request failed', {
+      method: init.method,
+      url,
+      error,
+    });
+    throw error;
+  }
+}
+
 export async function checkCloudSyncStatus(): Promise<SyncStatus> {
   try {
-    const response = await fetch(syncUrl('/api/sync/schema'), {
-      method: 'POST',
+    await requestSync<SyncStatus>(SYNC_STATUS_PATH, {
+      method: 'GET',
       headers: { accept: 'application/json' },
     });
-    await parseSyncResponse<SchemaResponse>(response);
     return { ok: true, message: 'Cloud sync connected' };
   } catch (error) {
     console.error('[cloud-sync] Status check failed', error);
@@ -89,11 +146,10 @@ export async function checkCloudSyncStatus(): Promise<SyncStatus> {
 }
 
 export async function fetchCloudStacks(): Promise<TimerStack[]> {
-  const response = await fetch(syncUrl('/api/sync/stacks'), {
+  const payload = await requestSync<StacksResponse>(SYNC_STACKS_PATH, {
     method: 'GET',
     headers: { accept: 'application/json' },
   });
-  const payload = await parseSyncResponse<StacksResponse>(response);
   return payload.stacks ?? [];
 }
 
@@ -102,7 +158,7 @@ export async function upsertCloudStack(stack: TimerStack): Promise<void> {
 }
 
 export async function upsertCloudStacks(stacks: TimerStack[]): Promise<TimerStack[]> {
-  const response = await fetch(syncUrl('/api/sync/stacks'), {
+  const payload = await requestSync<StacksResponse>(SYNC_STACKS_PATH, {
     method: 'POST',
     headers: {
       accept: 'application/json',
@@ -113,12 +169,11 @@ export async function upsertCloudStacks(stacks: TimerStack[]): Promise<TimerStac
       stacks,
     }),
   });
-  const payload = await parseSyncResponse<StacksResponse>(response);
   return payload.stacks ?? stacks;
 }
 
 export async function deleteCloudStack(stackId: string): Promise<void> {
-  const response = await fetch(syncUrl('/api/sync/stacks'), {
+  await requestSync<SyncStatus>(SYNC_STACKS_PATH, {
     method: 'DELETE',
     headers: {
       accept: 'application/json',
@@ -126,7 +181,6 @@ export async function deleteCloudStack(stackId: string): Promise<void> {
     },
     body: JSON.stringify({ stackId, deviceId: getDeviceId() }),
   });
-  await parseSyncResponse<SyncStatus>(response);
 }
 
 export async function mergeCloudStacks(localStacks: TimerStack[]): Promise<TimerStack[]> {
