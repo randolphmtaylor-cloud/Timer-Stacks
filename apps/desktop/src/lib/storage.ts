@@ -11,20 +11,39 @@ import { BaseStackStorage, BaseSessionStorage, STORAGE_KEYS } from '@timer-stack
 // ---------------------------------------------------------------------------
 
 function lsGet(key: string): string | null {
-  try { return localStorage.getItem(key); } catch { return null; }
+  try {
+    return localStorage.getItem(key);
+  } catch (error) {
+    console.error('[storage] localStorage read failed', { key, error });
+    return null;
+  }
 }
 function lsSet(key: string, value: string): void {
-  try { localStorage.setItem(key, value); } catch { /* quota/private mode */ }
+  try {
+    localStorage.setItem(key, value);
+  } catch (error) {
+    console.error('[storage] localStorage write failed', {
+      key,
+      bytes: value.length,
+      error,
+    });
+    throw error;
+  }
 }
 function lsRemove(key: string): void {
-  try { localStorage.removeItem(key); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(key);
+  } catch (error) {
+    console.error('[storage] localStorage remove failed', { key, error });
+  }
 }
 function lsReadJSON<T>(key: string, fallback: T): T {
   try {
     const raw = lsGet(key);
     if (!raw) return fallback;
     return JSON.parse(raw) as T;
-  } catch {
+  } catch (error) {
+    console.error('[storage] localStorage JSON parse failed', { key, error });
     return fallback;
   }
 }
@@ -39,11 +58,19 @@ export class LocalStackStorage extends BaseStackStorage {
   }
 
   protected async writeAll(stacks: TimerStack[]): Promise<void> {
+    console.info('[storage] Persisting stacks to localStorage', {
+      key: STORAGE_KEYS.stacks,
+      stackCount: stacks.length,
+    });
     lsSet(STORAGE_KEYS.stacks, JSON.stringify(stacks));
   }
 
   async replaceAll(stacks: TimerStack[]): Promise<void> {
     await this.writeAll(stacks);
+    console.info('[storage] Replaced all local stacks', {
+      stackCount: stacks.length,
+      stackIds: stacks.map((stack) => stack.stackId),
+    });
   }
 }
 

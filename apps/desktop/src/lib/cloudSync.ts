@@ -1,4 +1,4 @@
-import type { SessionRecord, TimerStack } from '@timer-stacks/core';
+import { TimerStackSchema, type SessionRecord, type TimerStack } from '@timer-stacks/core';
 
 type SyncStatus = {
   ok: boolean;
@@ -146,11 +146,33 @@ export async function checkCloudSyncStatus(): Promise<SyncStatus> {
 }
 
 export async function fetchCloudStacks(): Promise<TimerStack[]> {
+  console.info('[cloud-sync] Loading cloud stacks');
   const payload = await requestSync<StacksResponse>(SYNC_STACKS_PATH, {
     method: 'GET',
     headers: { accept: 'application/json' },
   });
-  return payload.stacks ?? [];
+
+  if (!Array.isArray(payload.stacks)) {
+    console.error('[cloud-sync] Stack load response did not include a stacks array', {
+      payload,
+    });
+    throw new Error('Sync API response did not include a stacks array');
+  }
+
+  const validated = TimerStackSchema.array().safeParse(payload.stacks);
+  if (!validated.success) {
+    console.error('[cloud-sync] Stack load response failed validation', {
+      issues: validated.error.issues,
+      stackCount: payload.stacks.length,
+    });
+    throw new Error('Sync API returned invalid stack data');
+  }
+
+  console.info('[cloud-sync] Loaded and validated cloud stacks', {
+    stackCount: validated.data.length,
+    stackIds: validated.data.map((stack) => stack.stackId),
+  });
+  return validated.data;
 }
 
 export async function upsertCloudStack(stack: TimerStack): Promise<void> {

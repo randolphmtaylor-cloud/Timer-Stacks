@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import type { TimerStack, CreateStackInput, UpdateStackInput } from '@timer-stacks/core';
 import { LocalStackStorage } from '../lib/storage.js';
-import { deleteCloudStack, mergeCloudStacks, upsertCloudStack } from '../lib/cloudSync.js';
+import { deleteCloudStack, fetchCloudStacks, upsertCloudStack } from '../lib/cloudSync.js';
 
 const storage = new LocalStackStorage();
 
@@ -35,10 +35,17 @@ export const useStackStore = create<StackState>((set, get) => ({
   },
 
   syncCloud: async () => {
-    const localStacks = await storage.getAll();
-    const stacks = await mergeCloudStacks(localStacks);
-    await storage.replaceAll(stacks);
-    set({ stacks });
+    console.info('[stack-store] Sync Now started: loading cloud stacks as source of truth');
+    const cloudStacks = await fetchCloudStacks();
+    console.info('[stack-store] Applying cloud stacks to local storage', {
+      stackCount: cloudStacks.length,
+      stackIds: cloudStacks.map((stack) => stack.stackId),
+    });
+    await storage.replaceAll(cloudStacks);
+    console.info('[stack-store] Updating UI state with cloud stacks', {
+      stackCount: cloudStacks.length,
+    });
+    set({ stacks: cloudStacks });
   },
 
   create: async (input) => {
