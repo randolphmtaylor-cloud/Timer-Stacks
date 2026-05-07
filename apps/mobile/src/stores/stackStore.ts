@@ -1,9 +1,26 @@
 import { create } from 'zustand';
 import type { TimerStack, CreateStackInput, UpdateStackInput } from '@timer-stacks/core';
 import { AsyncStackStorage } from '../lib/storage.js';
-import { deleteCloudStack, mergeCloudStacks, upsertCloudStack } from '../lib/cloudSync.js';
+import { fetchCloudStacks, upsertCloudStack, upsertCloudStacks } from '../lib/cloudSync.js';
 
 const storage = new AsyncStackStorage();
+
+function mergeStacksByUpdatedAt(localStacks: TimerStack[], cloudStacks: TimerStack[]): TimerStack[] {
+  const merged = new Map<string, TimerStack>();
+
+  for (const stack of cloudStacks) {
+    merged.set(stack.stackId, stack);
+  }
+
+  for (const localStack of localStacks) {
+    const cloudStack = merged.get(localStack.stackId);
+    if (!cloudStack || localStack.updatedAt > cloudStack.updatedAt) {
+      merged.set(localStack.stackId, localStack);
+    }
+  }
+
+  return [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+}
 
 interface StackState {
   stacks: TimerStack[];
@@ -22,17 +39,26 @@ export const useStackStore = create<StackState>((set, get) => ({
 
   load: async () => {
     set({ isLoading: true });
-    await storage.seedIfEmpty();
     const stacks = await storage.getAll();
     set({ stacks, isLoading: false });
-    get().syncCloud().catch(() => {});
+    get()
+      .syncCloud()
+      .catch(async () => {
+        if (stacks.length === 0) {
+          await storage.seedIfEmpty();
+          const seededStacks = await storage.getAll();
+          set({ stacks: seededStacks });
+        }
+      });
   },
 
   syncCloud: async () => {
     const localStacks = await storage.getAll();
-    const stacks = await mergeCloudStacks(localStacks);
+    const cloudStacks = await fetchCloudStacks();
+    const stacks = mergeStacksByUpdatedAt(localStacks, cloudStacks);
     await storage.replaceAll(stacks);
     set({ stacks });
+    await upsertCloudStacks(stacks);
   },
 
   create: async (input) => {
@@ -54,7 +80,6 @@ export const useStackStore = create<StackState>((set, get) => ({
   delete: async (stackId) => {
     await storage.delete(stackId);
     set((s) => ({ stacks: s.stacks.filter((st) => st.stackId !== stackId) }));
-    deleteCloudStack(stackId).catch(() => {});
   },
 
   duplicate: async (stackId) => {

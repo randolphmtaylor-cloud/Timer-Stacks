@@ -2,24 +2,24 @@
 // Seed templates — initial data for all platforms
 // ---------------------------------------------------------------------------
 
-import { v4 as uuidv4 } from 'uuid';
 import type { TimerStack } from '../types/stack.js';
 import { minutesToMs } from '../utils/time.js';
 
 function makeStack(
+  id: string,
   name: string,
   segments: Array<{ label: string; minutes: number; color?: string }>,
   opts: { description?: string; icon?: string } = {},
 ): TimerStack {
-  const segs = segments.map((s) => ({
-    segmentId: uuidv4(),
+  const segs = segments.map((s, index) => ({
+    segmentId: `${id}-segment-${index + 1}`,
     label: s.label,
     durationMs: minutesToMs(s.minutes),
     color: s.color,
   }));
-  const now = Date.now();
+  const now = 0;
   return {
-    stackId: uuidv4(),
+    stackId: id,
     name,
     totalDurationMs: segs.reduce((acc, s) => acc + s.durationMs, 0),
     segments: segs,
@@ -33,6 +33,7 @@ function makeStack(
 
 export const SEED_TEMPLATES: TimerStack[] = [
   makeStack(
+    'seed-music-practice-session',
     'Music Practice Session',
     [
       { label: 'Lip Slurs', minutes: 7.5, color: '#6366f1' },
@@ -46,6 +47,7 @@ export const SEED_TEMPLATES: TimerStack[] = [
   ),
 
   makeStack(
+    'seed-pomodoro-deep-work',
     'Pomodoro Deep Work',
     [
       { label: 'Focus Block 1', minutes: 25, color: '#ef4444' },
@@ -57,6 +59,7 @@ export const SEED_TEMPLATES: TimerStack[] = [
   ),
 
   makeStack(
+    'seed-workout-circuit',
     'Workout Circuit',
     [
       { label: 'Warm-Up', minutes: 5, color: '#f59e0b' },

@@ -5,9 +5,69 @@
 import { create } from 'zustand';
 import type { TimerStack, CreateStackInput, UpdateStackInput } from '@timer-stacks/core';
 import { LocalStackStorage } from '../lib/storage.js';
-import { deleteCloudStack, fetchCloudStacks, upsertCloudStack } from '../lib/cloudSync.js';
+import { fetchCloudStacks, upsertCloudStack, upsertCloudStacks } from '../lib/cloudSync.js';
 
 const storage = new LocalStackStorage();
+
+type MergeResult = {
+  stacks: TimerStack[];
+  localOnlyStackIds: string[];
+  cloudOnlyStackIds: string[];
+  conflictsResolved: Array<{
+    stackId: string;
+    kept: 'local' | 'cloud';
+    localUpdatedAt: number;
+    cloudUpdatedAt: number;
+  }>;
+};
+
+function mergeStacksByUpdatedAt(localStacks: TimerStack[], cloudStacks: TimerStack[]): MergeResult {
+  const merged = new Map<string, TimerStack>();
+  const localIds = new Set(localStacks.map((stack) => stack.stackId));
+  const cloudOnlyStackIds: string[] = [];
+  const localOnlyStackIds: string[] = [];
+  const conflictsResolved: MergeResult['conflictsResolved'] = [];
+
+  for (const stack of cloudStacks) {
+    merged.set(stack.stackId, stack);
+    if (!localIds.has(stack.stackId)) {
+      cloudOnlyStackIds.push(stack.stackId);
+    }
+  }
+
+  for (const localStack of localStacks) {
+    const cloudStack = merged.get(localStack.stackId);
+
+    if (!cloudStack) {
+      merged.set(localStack.stackId, localStack);
+      localOnlyStackIds.push(localStack.stackId);
+      continue;
+    }
+
+    const keepLocal = localStack.updatedAt > cloudStack.updatedAt;
+    const keepCloud = cloudStack.updatedAt > localStack.updatedAt;
+
+    if (keepLocal || keepCloud) {
+      conflictsResolved.push({
+        stackId: localStack.stackId,
+        kept: keepLocal ? 'local' : 'cloud',
+        localUpdatedAt: localStack.updatedAt,
+        cloudUpdatedAt: cloudStack.updatedAt,
+      });
+    }
+
+    if (keepLocal) {
+      merged.set(localStack.stackId, localStack);
+    }
+  }
+
+  return {
+    stacks: [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt),
+    localOnlyStackIds,
+    cloudOnlyStackIds,
+    conflictsResolved,
+  };
+}
 
 interface StackState {
   stacks: TimerStack[];
@@ -28,24 +88,55 @@ export const useStackStore = create<StackState>((set, get) => ({
 
   load: async () => {
     set({ isLoading: true });
-    await storage.seedIfEmpty();
     const stacks = await storage.getAll();
     set({ stacks, isLoading: false });
-    get().syncCloud().catch(() => {});
+    try {
+      await get().syncCloud();
+    } catch (error) {
+      console.error('[stack-store] Initial cloud sync failed', error);
+      if (stacks.length === 0) {
+        await storage.seedIfEmpty();
+        const seededStacks = await storage.getAll();
+        set({ stacks: seededStacks });
+      }
+    }
   },
 
   syncCloud: async () => {
-    console.info('[stack-store] Sync Now started: loading cloud stacks as source of truth');
+    console.info('[stack-store] Sync Now started: loading and merging cloud/local stacks');
+    const localStacks = await storage.getAll();
     const cloudStacks = await fetchCloudStacks();
-    console.info('[stack-store] Applying cloud stacks to local storage', {
-      stackCount: cloudStacks.length,
-      stackIds: cloudStacks.map((stack) => stack.stackId),
+
+    const {
+      stacks: mergedStacks,
+      localOnlyStackIds,
+      cloudOnlyStackIds,
+      conflictsResolved,
+    } = mergeStacksByUpdatedAt(localStacks, cloudStacks);
+
+    console.info('[stack-store] Merged cloud/local stacks', {
+      localStackCount: localStacks.length,
+      cloudStackCount: cloudStacks.length,
+      mergedStackCount: mergedStacks.length,
+      localOnlyStackCount: localOnlyStackIds.length,
+      cloudOnlyStackCount: cloudOnlyStackIds.length,
+      localOnlyStackIds,
+      cloudOnlyStackIds,
+      conflictsResolvedCount: conflictsResolved.length,
+      conflictsResolved,
     });
-    await storage.replaceAll(cloudStacks);
-    console.info('[stack-store] Updating UI state with cloud stacks', {
-      stackCount: cloudStacks.length,
+
+    await storage.replaceAll(mergedStacks);
+    console.info('[stack-store] Updating UI state with merged stacks', {
+      stackCount: mergedStacks.length,
     });
-    set({ stacks: cloudStacks });
+    set({ stacks: mergedStacks });
+
+    const uploadedStacks = await upsertCloudStacks(mergedStacks);
+    console.info('[stack-store] Uploaded merged stacks to cloud', {
+      uploadedStackCount: mergedStacks.length,
+      returnedCloudStackCount: uploadedStacks.length,
+    });
   },
 
   create: async (input) => {
@@ -67,7 +158,9 @@ export const useStackStore = create<StackState>((set, get) => ({
   delete: async (stackId) => {
     await storage.delete(stackId);
     set((s) => ({ stacks: s.stacks.filter((st) => st.stackId !== stackId) }));
-    deleteCloudStack(stackId).catch(() => {});
+    console.info('[stack-store] Deleted stack locally only; cloud deletion requires tombstones', {
+      stackId,
+    });
   },
 
   duplicate: async (stackId) => {

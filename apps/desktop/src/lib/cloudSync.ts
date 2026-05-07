@@ -180,6 +180,10 @@ export async function upsertCloudStack(stack: TimerStack): Promise<void> {
 }
 
 export async function upsertCloudStacks(stacks: TimerStack[]): Promise<TimerStack[]> {
+  console.info('[cloud-sync] Uploading stacks to cloud', {
+    uploadedStackCount: stacks.length,
+    stackIds: stacks.map((stack) => stack.stackId),
+  });
   const payload = await requestSync<StacksResponse>(SYNC_STACKS_PATH, {
     method: 'POST',
     headers: {
@@ -191,33 +195,28 @@ export async function upsertCloudStacks(stacks: TimerStack[]): Promise<TimerStac
       stacks,
     }),
   });
-  return payload.stacks ?? stacks;
-}
 
-export async function deleteCloudStack(stackId: string): Promise<void> {
-  await requestSync<SyncStatus>(SYNC_STACKS_PATH, {
-    method: 'DELETE',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ stackId, deviceId: getDeviceId() }),
-  });
-}
-
-export async function mergeCloudStacks(localStacks: TimerStack[]): Promise<TimerStack[]> {
-  const remoteStacks = await upsertCloudStacks(localStacks);
-  const merged = new Map<string, TimerStack>();
-
-  for (const stack of remoteStacks) merged.set(stack.stackId, stack);
-  for (const stack of localStacks) {
-    const remote = merged.get(stack.stackId);
-    if (!remote || stack.updatedAt > remote.updatedAt) {
-      merged.set(stack.stackId, stack);
-    }
+  if (!Array.isArray(payload.stacks)) {
+    console.error('[cloud-sync] Stack upload response did not include a stacks array', {
+      payload,
+    });
+    throw new Error('Sync API upload response did not include a stacks array');
   }
 
-  return [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  const validated = TimerStackSchema.array().safeParse(payload.stacks);
+  if (!validated.success) {
+    console.error('[cloud-sync] Stack upload response failed validation', {
+      issues: validated.error.issues,
+      stackCount: payload.stacks.length,
+    });
+    throw new Error('Sync API returned invalid stack data after upload');
+  }
+
+  console.info('[cloud-sync] Uploaded stacks and received cloud state', {
+    uploadedStackCount: stacks.length,
+    cloudStackCount: validated.data.length,
+  });
+  return validated.data;
 }
 
 export async function saveCloudSessionRecord(_record: SessionRecord): Promise<void> {

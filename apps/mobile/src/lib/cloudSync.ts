@@ -94,36 +94,6 @@ export async function upsertCloudStacks(stacks: TimerStack[]): Promise<TimerStac
   return payload.stacks ?? stacks;
 }
 
-export async function deleteCloudStack(stackId: string): Promise<void> {
-  const response = await fetch(syncUrl('/api/sync/stacks'), {
-    method: 'DELETE',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      deviceId: await getDeviceId(),
-      stackId,
-    }),
-  });
-  await parseSyncResponse<SyncStatus>(response);
-}
-
-export async function mergeCloudStacks(localStacks: TimerStack[]): Promise<TimerStack[]> {
-  const remoteStacks = await upsertCloudStacks(localStacks);
-  const merged = new Map<string, TimerStack>();
-
-  for (const stack of remoteStacks) merged.set(stack.stackId, stack);
-  for (const stack of localStacks) {
-    const remote = merged.get(stack.stackId);
-    if (!remote || stack.updatedAt > remote.updatedAt) {
-      merged.set(stack.stackId, stack);
-    }
-  }
-
-  return [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt);
-}
-
 export async function saveCloudSessionRecord(_record: SessionRecord): Promise<void> {
   // Session history remains local for now; stack sync is handled by the Turso API.
 }
