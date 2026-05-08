@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { loadDesktopEnv } from './env.mjs';
 import { handleSchemaRequest, writeJson } from './tursoSchema.mjs';
-import { handleStacksRequest, handleSyncStatusRequest } from './tursoSync.mjs';
+import { handleSettingsRequest, handleStacksRequest, handleSyncStatusRequest } from './tursoSync.mjs';
 
 loadDesktopEnv();
 
@@ -26,6 +26,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/sync/settings') {
+    await handleSettingsRequest(req, res);
+    return;
+  }
+
   writeJson(res, 404, {
     ok: false,
     error: 'Not found',
@@ -37,6 +42,7 @@ server.listen(port, host, () => {
   console.log(`[sync-api] Schema endpoint ready at http://${host}:${port}/api/sync/schema`);
   console.log(`[sync-api] Status endpoint ready at http://${host}:${port}/api/sync/status`);
   console.log(`[sync-api] Stacks endpoint ready at http://${host}:${port}/api/sync/stacks`);
+  console.log(`[sync-api] Settings endpoint ready at http://${host}:${port}/api/sync/settings`);
 });
 
 server.on('error', (error) => {

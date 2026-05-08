@@ -57,7 +57,7 @@ export function StackBuilder() {
     setIsTemplate(stack.isTemplate);
     setSegments(
       stack.segments.map((s) => ({
-        id: uuidv4(),
+        id: s.segmentId,
         label: s.label,
         durationMs: s.durationMs,
         color: s.color ?? DEFAULT_COLOR,
@@ -140,6 +140,7 @@ export function StackBuilder() {
     }
 
     const normalizedSegments = segments.map((s, index) => ({
+      segmentId: s.id,
       label: s.label.trim() || `Segment ${index + 1}`,
       durationMs: s.durationMs,
       color: s.color,
@@ -171,7 +172,11 @@ export function StackBuilder() {
         const stack = await create({
           name: name.trim(),
           totalDurationMs: totalMs,
-          segments: normalizedSegments,
+          segments: normalizedSegments.map(({ label, durationMs, color }) => ({
+            label,
+            durationMs,
+            color,
+          })),
           isTemplate,
           description: description.trim() || undefined,
           icon: icon.trim() || undefined,

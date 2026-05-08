@@ -85,10 +85,18 @@ export function Settings() {
   }
 
   function handleNotificationsChange(enabled: boolean) {
-    setNotifications(enabled);
+    setNotifications(enabled).catch((error) => {
+      console.error('[settings-store] Failed to sync notification setting', error);
+    });
     if (enabled) {
       ensureNotificationPermission().catch(() => {});
     }
+  }
+
+  function handleSoundChange(enabled: boolean) {
+    setSound(enabled).catch((error) => {
+      console.error('[settings-store] Failed to sync sound setting', error);
+    });
   }
 
   function exportTemplates() {
@@ -169,7 +177,11 @@ export function Settings() {
             {(['light', 'dark', 'system'] as const).map((t) => (
               <button
                 key={t}
-                onClick={() => setTheme(t)}
+                onClick={() => {
+                  setTheme(t).catch((error) => {
+                    console.error('[settings-store] Failed to sync theme setting', error);
+                  });
+                }}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   theme === t
                     ? 'bg-accent/10 text-accent'
@@ -200,7 +212,7 @@ export function Settings() {
             label="Sound Cues"
             description="Play a sound when transitions occur"
             checked={soundEnabled}
-            onChange={setSound}
+            onChange={handleSoundChange}
           />
           <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">

@@ -11,6 +11,7 @@ const schemaStatements = [
     device_id TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     description TEXT,
+    icon TEXT,
     total_duration_seconds INTEGER NOT NULL DEFAULT 0 CHECK (total_duration_seconds >= 0),
     is_template INTEGER NOT NULL DEFAULT 0 CHECK (is_template IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT ${timestampDefault},
@@ -23,6 +24,7 @@ const schemaStatements = [
     stack_id TEXT NOT NULL,
     name TEXT NOT NULL,
     duration_seconds INTEGER NOT NULL CHECK (duration_seconds > 0),
+    color TEXT,
     position INTEGER NOT NULL CHECK (position >= 0),
     created_at TEXT NOT NULL DEFAULT ${timestampDefault},
     updated_at TEXT NOT NULL DEFAULT ${timestampDefault},
@@ -43,6 +45,17 @@ const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS stack_segments_stack_position_idx ON stack_segments (stack_id, position)',
   'CREATE INDEX IF NOT EXISTS stack_segments_device_updated_idx ON stack_segments (device_id, updated_at)',
   'CREATE INDEX IF NOT EXISTS app_settings_device_updated_idx ON app_settings (device_id, updated_at)',
+];
+
+const migrationStatements = [
+  {
+    sql: 'ALTER TABLE stacks ADD COLUMN icon TEXT',
+    ignoreError: 'duplicate column name',
+  },
+  {
+    sql: 'ALTER TABLE stack_segments ADD COLUMN color TEXT',
+    ignoreError: 'duplicate column name',
+  },
 ];
 
 function normalizeTursoUrl(databaseUrl) {
@@ -143,6 +156,17 @@ export async function createTursoSchema(options = {}) {
     await executeStatement({ ...config, sql, fetchImpl });
   }
 
+  for (const migration of migrationStatements) {
+    try {
+      await executeStatement({ ...config, sql: migration.sql, fetchImpl });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.toLowerCase().includes(migration.ignoreError)) {
+        throw error;
+      }
+    }
+  }
+
   return {
     ok: true,
     status: 'connected',
@@ -153,6 +177,7 @@ export async function createTursoSchema(options = {}) {
 export async function handleSchemaRequest(req, res) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
+      'access-control-allow-headers': 'accept, content-type',
       'access-control-allow-methods': 'GET, POST, OPTIONS',
       'access-control-allow-origin': '*',
     });

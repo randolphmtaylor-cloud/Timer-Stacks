@@ -41,12 +41,15 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 export default function App() {
   const { load: loadStacks, stacks } = useStackStore();
   const { hydrate: hydrateSessions } = useSessionStore();
-  const { notificationsEnabled } = useSettingsStore();
+  const { loadCloudSettings, notificationsEnabled } = useSettingsStore();
 
   // Bootstrap
   useEffect(() => {
     loadStacks();
-  }, [loadStacks]);
+    loadCloudSettings().catch((error) => {
+      console.error('[settings-store] Initial cloud settings sync failed', error);
+    });
+  }, [loadCloudSettings, loadStacks]);
 
   useEffect(() => {
     if (notificationsEnabled) {

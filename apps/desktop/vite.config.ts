@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { logTursoEnvStatus } from './server/env.mjs';
 import { handleSchemaRequest } from './server/tursoSchema.mjs';
-import { handleStacksRequest, handleSyncStatusRequest } from './server/tursoSync.mjs';
+import { handleSettingsRequest, handleStacksRequest, handleSyncStatusRequest } from './server/tursoSync.mjs';
 
 export default defineConfig(({ mode }) => {
   const serverEnv = loadEnv(mode, __dirname, '');
@@ -35,6 +35,11 @@ export default defineConfig(({ mode }) => {
 
             if (url.pathname === '/api/sync/stacks') {
               await handleStacksRequest(req, res);
+              return;
+            }
+
+            if (url.pathname === '/api/sync/settings') {
+              await handleSettingsRequest(req, res);
               return;
             }
 

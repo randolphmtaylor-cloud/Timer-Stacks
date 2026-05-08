@@ -140,7 +140,17 @@ function rowToSegment(row) {
     segmentId: row.id,
     label: row.name,
     durationMs: Number(row.duration_seconds) * 1000,
-    color: undefined,
+    color: row.color ?? undefined,
+  };
+}
+
+function normalizeSettings(settings) {
+  return {
+    theme: ['light', 'dark', 'system'].includes(settings?.theme) ? settings.theme : 'system',
+    notificationsEnabled:
+      typeof settings?.notificationsEnabled === 'boolean' ? settings.notificationsEnabled : true,
+    soundEnabled: typeof settings?.soundEnabled === 'boolean' ? settings.soundEnabled : true,
+    updatedAt: Number.isFinite(Number(settings?.updatedAt)) ? Number(settings.updatedAt) : Date.now(),
   };
 }
 
@@ -156,13 +166,13 @@ export async function fetchStacks() {
   await createTursoSchema();
 
   const stackResult = await execute({
-    sql: `SELECT id, name, description, total_duration_seconds, is_template, created_at, updated_at
+    sql: `SELECT id, name, description, icon, total_duration_seconds, is_template, created_at, updated_at
       FROM stacks
       WHERE deleted_at IS NULL
       ORDER BY updated_at DESC`,
   });
   const segmentResult = await execute({
-    sql: `SELECT id, stack_id, name, duration_seconds, position
+    sql: `SELECT id, stack_id, name, duration_seconds, color, position
       FROM stack_segments
       WHERE deleted_at IS NULL
       ORDER BY stack_id, position ASC`,
@@ -182,18 +192,31 @@ export async function fetchStacks() {
   return [...stacks.values()];
 }
 
+export async function fetchDeletedStackIds() {
+  await createTursoSchema();
+
+  const result = await execute({
+    sql: `SELECT id
+      FROM stacks
+      WHERE deleted_at IS NOT NULL`,
+  });
+
+  return (result.rows ?? []).map((row) => String(rowToObject(result, row).id));
+}
+
 export async function upsertStacks(stacks, deviceId) {
   await createTursoSchema();
 
   for (const stack of stacks) {
     await execute({
       sql: `INSERT INTO stacks (
-          id, device_id, name, description, total_duration_seconds, is_template, created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+          id, device_id, name, description, icon, total_duration_seconds, is_template, created_at, updated_at, deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
         ON CONFLICT(id) DO UPDATE SET
           device_id = excluded.device_id,
           name = excluded.name,
           description = excluded.description,
+          icon = excluded.icon,
           total_duration_seconds = excluded.total_duration_seconds,
           is_template = excluded.is_template,
           updated_at = excluded.updated_at,
@@ -203,6 +226,7 @@ export async function upsertStacks(stacks, deviceId) {
         deviceId,
         stack.name,
         stack.description ?? null,
+        stack.icon ?? null,
         secondsFromMs(stack.totalDurationMs),
         stack.isTemplate ? 1 : 0,
         isoFromMs(stack.createdAt),
@@ -218,13 +242,14 @@ export async function upsertStacks(stacks, deviceId) {
     for (const [position, segment] of stack.segments.entries()) {
       await execute({
         sql: `INSERT INTO stack_segments (
-            id, device_id, stack_id, name, duration_seconds, position, created_at, updated_at, deleted_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            id, device_id, stack_id, name, duration_seconds, color, position, created_at, updated_at, deleted_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
           ON CONFLICT(id) DO UPDATE SET
             device_id = excluded.device_id,
             stack_id = excluded.stack_id,
             name = excluded.name,
             duration_seconds = excluded.duration_seconds,
+            color = excluded.color,
             position = excluded.position,
             updated_at = excluded.updated_at,
             deleted_at = NULL`,
@@ -234,12 +259,59 @@ export async function upsertStacks(stacks, deviceId) {
           stack.stackId,
           segment.label,
           secondsFromMs(segment.durationMs),
+          segment.color ?? null,
           position,
           isoFromMs(stack.createdAt),
           isoFromMs(stack.updatedAt),
         ],
       });
     }
+  }
+}
+
+export async function fetchSettings(deviceId) {
+  await createTursoSchema();
+
+  const result = await execute({
+    sql: `SELECT key, value, updated_at
+      FROM app_settings
+      WHERE device_id = ? AND deleted_at IS NULL`,
+    args: [deviceId],
+  });
+
+  const settings = {};
+  let updatedAt = 0;
+  for (const row of result.rows ?? []) {
+    const item = rowToObject(result, row);
+    settings[item.key] = item.value === 'true' ? true : item.value === 'false' ? false : item.value;
+    updatedAt = Math.max(updatedAt, Date.parse(item.updated_at));
+  }
+
+  return normalizeSettings({ ...settings, updatedAt });
+}
+
+export async function upsertSettings(settings, deviceId) {
+  await createTursoSchema();
+
+  const normalized = normalizeSettings(settings);
+  const updatedAt = isoFromMs(normalized.updatedAt);
+  const entries = {
+    theme: normalized.theme,
+    notificationsEnabled: String(normalized.notificationsEnabled),
+    soundEnabled: String(normalized.soundEnabled),
+  };
+
+  for (const [key, value] of Object.entries(entries)) {
+    await execute({
+      sql: `INSERT INTO app_settings (
+          id, device_id, key, value, created_at, updated_at, deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL)
+        ON CONFLICT(device_id, key) DO UPDATE SET
+          value = excluded.value,
+          updated_at = excluded.updated_at,
+          deleted_at = NULL`,
+      args: [`${deviceId}:${key}`, deviceId, key, value, updatedAt, updatedAt],
+    });
   }
 }
 
@@ -259,6 +331,7 @@ export async function deleteStack(stackId) {
 export async function handleSyncStatusRequest(req, res) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
+      'access-control-allow-headers': 'accept, content-type',
       'access-control-allow-methods': 'GET, POST, OPTIONS',
       'access-control-allow-origin': '*',
     });
@@ -288,6 +361,7 @@ export async function handleSyncStatusRequest(req, res) {
 export async function handleStacksRequest(req, res) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
+      'access-control-allow-headers': 'accept, content-type',
       'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
       'access-control-allow-origin': '*',
     });
@@ -300,6 +374,7 @@ export async function handleStacksRequest(req, res) {
       writeJson(res, 200, {
         ok: true,
         stacks: await fetchStacks(),
+        deletedStackIds: await fetchDeletedStackIds(),
       });
       return;
     }
@@ -311,6 +386,7 @@ export async function handleStacksRequest(req, res) {
       writeJson(res, 200, {
         ok: true,
         stacks: await fetchStacks(),
+        deletedStackIds: await fetchDeletedStackIds(),
       });
       return;
     }
@@ -321,7 +397,54 @@ export async function handleStacksRequest(req, res) {
         return;
       }
       await deleteStack(String(body.stackId));
-      writeJson(res, 200, { ok: true });
+      writeJson(res, 200, {
+        ok: true,
+        stacks: await fetchStacks(),
+        deletedStackIds: await fetchDeletedStackIds(),
+      });
+      return;
+    }
+
+    writeJson(res, 405, { ok: false, error: 'Method not allowed' });
+  } catch (error) {
+    writeJson(res, 500, {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function handleSettingsRequest(req, res) {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'access-control-allow-headers': 'accept, content-type',
+      'access-control-allow-methods': 'GET, POST, OPTIONS',
+      'access-control-allow-origin': '*',
+    });
+    res.end();
+    return;
+  }
+
+  try {
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    const deviceId = url.searchParams.get('deviceId') ?? 'web';
+
+    if (req.method === 'GET') {
+      writeJson(res, 200, {
+        ok: true,
+        settings: await fetchSettings(deviceId),
+      });
+      return;
+    }
+
+    if (req.method === 'POST') {
+      const body = await readJson(req);
+      const requestDeviceId = String(body.deviceId ?? deviceId);
+      await upsertSettings(body.settings ?? {}, requestDeviceId);
+      writeJson(res, 200, {
+        ok: true,
+        settings: await fetchSettings(requestDeviceId),
+      });
       return;
     }
 

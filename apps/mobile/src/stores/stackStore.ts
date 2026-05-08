@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import type { TimerStack, CreateStackInput, UpdateStackInput } from '@timer-stacks/core';
 import { AsyncStackStorage } from '../lib/storage.js';
-import { fetchCloudStacks, upsertCloudStack, upsertCloudStacks } from '../lib/cloudSync.js';
+import {
+  deleteCloudStack,
+  fetchCloudStackState,
+  upsertCloudStack,
+  upsertCloudStacks,
+} from '../lib/cloudSync.js';
 
 const storage = new AsyncStackStorage();
 
@@ -54,8 +59,12 @@ export const useStackStore = create<StackState>((set, get) => ({
 
   syncCloud: async () => {
     const localStacks = await storage.getAll();
-    const cloudStacks = await fetchCloudStacks();
-    const stacks = mergeStacksByUpdatedAt(localStacks, cloudStacks);
+    const { stacks: cloudStacks, deletedStackIds } = await fetchCloudStackState();
+    const deletedStackIdSet = new Set(deletedStackIds);
+    const stacks = mergeStacksByUpdatedAt(
+      localStacks.filter((stack) => !deletedStackIdSet.has(stack.stackId)),
+      cloudStacks,
+    );
     await storage.replaceAll(stacks);
     set({ stacks });
     await upsertCloudStacks(stacks);
@@ -64,20 +73,38 @@ export const useStackStore = create<StackState>((set, get) => ({
   create: async (input) => {
     const stack = await storage.create(input);
     set((s) => ({ stacks: [...s.stacks, stack] }));
-    upsertCloudStack(stack).catch(() => {});
+    try {
+      await upsertCloudStack(stack);
+    } catch (error) {
+      await storage.delete(stack.stackId);
+      set((s) => ({ stacks: s.stacks.filter((st) => st.stackId !== stack.stackId) }));
+      throw error;
+    }
     return stack;
   },
 
   update: async (input) => {
+    const previous = await storage.getById(input.stackId);
     const stack = await storage.update(input);
     set((s) => ({
       stacks: s.stacks.map((st) => (st.stackId === stack.stackId ? stack : st)),
     }));
-    upsertCloudStack(stack).catch(() => {});
+    try {
+      await upsertCloudStack(stack);
+    } catch (error) {
+      if (previous) {
+        await storage.update(previous);
+        set((s) => ({
+          stacks: s.stacks.map((st) => (st.stackId === previous.stackId ? previous : st)),
+        }));
+      }
+      throw error;
+    }
     return stack;
   },
 
   delete: async (stackId) => {
+    await deleteCloudStack(stackId);
     await storage.delete(stackId);
     set((s) => ({ stacks: s.stacks.filter((st) => st.stackId !== stackId) }));
   },
@@ -85,7 +112,13 @@ export const useStackStore = create<StackState>((set, get) => ({
   duplicate: async (stackId) => {
     const stack = await storage.duplicate(stackId);
     set((s) => ({ stacks: [...s.stacks, stack] }));
-    upsertCloudStack(stack).catch(() => {});
+    try {
+      await upsertCloudStack(stack);
+    } catch (error) {
+      await storage.delete(stack.stackId);
+      set((s) => ({ stacks: s.stacks.filter((st) => st.stackId !== stack.stackId) }));
+      throw error;
+    }
     return stack;
   },
 }));

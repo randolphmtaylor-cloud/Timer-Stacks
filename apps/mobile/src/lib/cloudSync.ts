@@ -11,6 +11,7 @@ type SyncStatus = {
 
 type StacksResponse = SyncStatus & {
   stacks?: TimerStack[];
+  deletedStackIds?: string[];
 };
 
 const DEVICE_ID_KEY = 'timer-stacks-device-id';
@@ -74,6 +75,21 @@ export async function fetchCloudStacks(): Promise<TimerStack[]> {
   return payload.stacks ?? [];
 }
 
+export async function fetchCloudStackState(): Promise<{
+  stacks: TimerStack[];
+  deletedStackIds: string[];
+}> {
+  const response = await fetch(syncUrl('/api/sync/stacks'), {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+  });
+  const payload = await parseSyncResponse<StacksResponse>(response);
+  return {
+    stacks: payload.stacks ?? [],
+    deletedStackIds: Array.isArray(payload.deletedStackIds) ? payload.deletedStackIds : [],
+  };
+}
+
 export async function upsertCloudStack(stack: TimerStack): Promise<void> {
   await upsertCloudStacks([stack]);
 }
@@ -92,6 +108,19 @@ export async function upsertCloudStacks(stacks: TimerStack[]): Promise<TimerStac
   });
   const payload = await parseSyncResponse<StacksResponse>(response);
   return payload.stacks ?? stacks;
+}
+
+export async function deleteCloudStack(stackId: string): Promise<TimerStack[]> {
+  const response = await fetch(syncUrl('/api/sync/stacks'), {
+    method: 'DELETE',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ stackId }),
+  });
+  const payload = await parseSyncResponse<StacksResponse>(response);
+  return payload.stacks ?? [];
 }
 
 export async function saveCloudSessionRecord(_record: SessionRecord): Promise<void> {

@@ -9,12 +9,26 @@ type SyncStatus = {
 
 type StacksResponse = SyncStatus & {
   stacks?: TimerStack[];
+  deletedStackIds?: string[];
+};
+
+export type CloudSettings = {
+  theme: 'light' | 'dark' | 'system';
+  notificationsEnabled: boolean;
+  soundEnabled: boolean;
+  updatedAt: number;
+};
+
+type SettingsResponse = SyncStatus & {
+  settings?: CloudSettings;
 };
 
 const DEVICE_ID_KEY = 'timer-stacks-device-id';
+const SETTINGS_SCOPE_ID = 'timer-stacks-global-settings';
 const syncApiBaseUrl = (import.meta.env.VITE_SYNC_API_BASE_URL ?? '').replace(/\/$/, '');
 const SYNC_STATUS_PATH = '/api/sync/status';
 const SYNC_STACKS_PATH = '/api/sync/stacks';
+const SYNC_SETTINGS_PATH = '/api/sync/settings';
 
 function syncUrl(path: string): string {
   return `${syncApiBaseUrl}${path}`;
@@ -145,6 +159,26 @@ export async function checkCloudSyncStatus(): Promise<SyncStatus> {
   }
 }
 
+function validateStacksResponse(payload: StacksResponse, context: string): TimerStack[] {
+  if (!Array.isArray(payload.stacks)) {
+    console.error(`[cloud-sync] ${context} response did not include a stacks array`, {
+      payload,
+    });
+    throw new Error(`Sync API ${context} response did not include a stacks array`);
+  }
+
+  const validated = TimerStackSchema.array().safeParse(payload.stacks);
+  if (!validated.success) {
+    console.error(`[cloud-sync] ${context} response failed validation`, {
+      issues: validated.error.issues,
+      stackCount: payload.stacks.length,
+    });
+    throw new Error(`Sync API returned invalid stack data after ${context}`);
+  }
+
+  return validated.data;
+}
+
 export async function fetchCloudStacks(): Promise<TimerStack[]> {
   console.info('[cloud-sync] Loading cloud stacks');
   const payload = await requestSync<StacksResponse>(SYNC_STACKS_PATH, {
@@ -152,27 +186,28 @@ export async function fetchCloudStacks(): Promise<TimerStack[]> {
     headers: { accept: 'application/json' },
   });
 
-  if (!Array.isArray(payload.stacks)) {
-    console.error('[cloud-sync] Stack load response did not include a stacks array', {
-      payload,
-    });
-    throw new Error('Sync API response did not include a stacks array');
-  }
-
-  const validated = TimerStackSchema.array().safeParse(payload.stacks);
-  if (!validated.success) {
-    console.error('[cloud-sync] Stack load response failed validation', {
-      issues: validated.error.issues,
-      stackCount: payload.stacks.length,
-    });
-    throw new Error('Sync API returned invalid stack data');
-  }
+  const stacks = validateStacksResponse(payload, 'load');
 
   console.info('[cloud-sync] Loaded and validated cloud stacks', {
-    stackCount: validated.data.length,
-    stackIds: validated.data.map((stack) => stack.stackId),
+    stackCount: stacks.length,
+    stackIds: stacks.map((stack) => stack.stackId),
   });
-  return validated.data;
+  return stacks;
+}
+
+export async function fetchCloudStackState(): Promise<{
+  stacks: TimerStack[];
+  deletedStackIds: string[];
+}> {
+  const payload = await requestSync<StacksResponse>(SYNC_STACKS_PATH, {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+  });
+
+  return {
+    stacks: validateStacksResponse(payload, 'load'),
+    deletedStackIds: Array.isArray(payload.deletedStackIds) ? payload.deletedStackIds : [],
+  };
 }
 
 export async function upsertCloudStack(stack: TimerStack): Promise<void> {
@@ -196,27 +231,62 @@ export async function upsertCloudStacks(stacks: TimerStack[]): Promise<TimerStac
     }),
   });
 
-  if (!Array.isArray(payload.stacks)) {
-    console.error('[cloud-sync] Stack upload response did not include a stacks array', {
-      payload,
-    });
-    throw new Error('Sync API upload response did not include a stacks array');
-  }
-
-  const validated = TimerStackSchema.array().safeParse(payload.stacks);
-  if (!validated.success) {
-    console.error('[cloud-sync] Stack upload response failed validation', {
-      issues: validated.error.issues,
-      stackCount: payload.stacks.length,
-    });
-    throw new Error('Sync API returned invalid stack data after upload');
-  }
+  const validated = validateStacksResponse(payload, 'upload');
 
   console.info('[cloud-sync] Uploaded stacks and received cloud state', {
     uploadedStackCount: stacks.length,
-    cloudStackCount: validated.data.length,
+    cloudStackCount: validated.length,
   });
-  return validated.data;
+  return validated;
+}
+
+export async function deleteCloudStack(stackId: string): Promise<TimerStack[]> {
+  const payload = await requestSync<StacksResponse>(SYNC_STACKS_PATH, {
+    method: 'DELETE',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ stackId }),
+  });
+
+  return validateStacksResponse(payload, 'delete');
+}
+
+export async function fetchCloudSettings(): Promise<CloudSettings> {
+  const payload = await requestSync<SettingsResponse>(
+    `${SYNC_SETTINGS_PATH}?deviceId=${encodeURIComponent(SETTINGS_SCOPE_ID)}`,
+    {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    },
+  );
+
+  if (!payload.settings) {
+    throw new Error('Sync API settings response did not include settings');
+  }
+
+  return payload.settings;
+}
+
+export async function saveCloudSettings(settings: CloudSettings): Promise<CloudSettings> {
+  const payload = await requestSync<SettingsResponse>(SYNC_SETTINGS_PATH, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      deviceId: SETTINGS_SCOPE_ID,
+      settings,
+    }),
+  });
+
+  if (!payload.settings) {
+    throw new Error('Sync API settings upload response did not include settings');
+  }
+
+  return payload.settings;
 }
 
 export async function saveCloudSessionRecord(_record: SessionRecord): Promise<void> {
