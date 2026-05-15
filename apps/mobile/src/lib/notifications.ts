@@ -20,16 +20,18 @@ Notifications.setNotificationHandler({
 export class ExpoNotificationService implements INotificationService {
   async requestPermission(): Promise<boolean> {
     const { status } = await Notifications.requestPermissionsAsync();
+    console.info('[notifications] Permission request result', { status });
     return status === 'granted';
   }
 
   async isPermitted(): Promise<boolean> {
     const { status } = await Notifications.getPermissionsAsync();
+    console.info('[notifications] Permission status', { status });
     return status === 'granted';
   }
 
-  async show(payload: NotificationPayload): Promise<void> {
-    if (!(await this.isPermitted())) return;
+  async show(payload: NotificationPayload): Promise<boolean> {
+    if (!(await this.isPermitted())) return false;
     try {
       await Notifications.scheduleNotificationAsync({
         content: {
@@ -39,8 +41,14 @@ export class ExpoNotificationService implements INotificationService {
         },
         trigger: null, // immediate
       });
-    } catch {
-      // Fail silently — UI remains correct without notification
+      console.info('[notifications] Expo notification scheduled', {
+        title: payload.title,
+        sound: payload.sound,
+      });
+      return true;
+    } catch (error) {
+      console.error('[notifications] Expo notification failed', error);
+      return false;
     }
   }
 }

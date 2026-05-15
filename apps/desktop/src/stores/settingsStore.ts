@@ -30,7 +30,7 @@ export const useSettingsStore = create<Settings>()(
     (set, get) => ({
       theme: 'system',
       notificationsEnabled: true,
-      soundEnabled: true,
+      soundEnabled: false,
       updatedAt: 0,
 
       loadCloudSettings: async () => {

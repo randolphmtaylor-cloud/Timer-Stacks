@@ -6,6 +6,12 @@ import {
 import type { INotificationService, NotificationPayload } from '@timer-stacks/storage';
 
 type Permission = 'default' | 'denied' | 'granted' | 'prompt' | 'prompt-with-rationale';
+const IN_APP_ALERT_EVENT = 'timer-stacks-alert';
+
+export type InAppAlertDetail = {
+  title: string;
+  body: string;
+};
 
 function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -16,14 +22,18 @@ function isWebNotificationSupported(): boolean {
 }
 
 export async function ensureNotificationPermission(): Promise<boolean> {
+  console.info('[notifications] Checking notification permission');
   if (!isTauriRuntime()) {
     if (!isWebNotificationSupported()) return false;
     if (Notification.permission === 'granted') return true;
     if (Notification.permission === 'denied') return false;
 
     try {
-      return (await Notification.requestPermission()) === 'granted';
-    } catch {
+      const permission = await Notification.requestPermission();
+      console.info('[notifications] Browser notification permission result', { permission });
+      return permission === 'granted';
+    } catch (error) {
+      console.error('[notifications] Browser notification permission request failed', error);
       return false;
     }
   }
@@ -31,8 +41,10 @@ export async function ensureNotificationPermission(): Promise<boolean> {
   try {
     if (await isPermissionGranted()) return true;
     const permission = (await requestPermission()) as Permission;
+    console.info('[notifications] Tauri notification permission result', { permission });
     return permission === 'granted';
-  } catch {
+  } catch (error) {
+    console.error('[notifications] Tauri notification permission request failed', error);
     return false;
   }
 }
@@ -42,22 +54,40 @@ export async function ensureStartupNotificationPermission(): Promise<boolean> {
   return isWebNotificationSupported() && Notification.permission === 'granted';
 }
 
-async function notify(title: string, body: string): Promise<void> {
-  if (!(await ensureNotificationPermission())) return;
+function showInAppAlert(title: string, body: string): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent<InAppAlertDetail>(IN_APP_ALERT_EVENT, {
+    detail: { title, body },
+  }));
+}
+
+async function notify(title: string, body: string): Promise<boolean> {
+  if (!(await ensureNotificationPermission())) {
+    console.warn('[notifications] Permission unavailable; using in-app alert', { title });
+    showInAppAlert(title, body);
+    return false;
+  }
 
   if (!isTauriRuntime()) {
     try {
       new Notification(title, { body });
-    } catch {
-      // Browser notifications are best-effort.
+      console.info('[notifications] Browser notification delivered', { title });
+      return true;
+    } catch (error) {
+      console.error('[notifications] Browser notification failed; using in-app alert', error);
+      showInAppAlert(title, body);
+      return false;
     }
-    return;
   }
 
   try {
     sendNotification({ title, body });
-  } catch {
-    // Native notifications are a convenience; timer state remains authoritative.
+    console.info('[notifications] Tauri notification delivered', { title });
+    return true;
+  } catch (error) {
+    console.error('[notifications] Tauri notification failed; using in-app alert', error);
+    showInAppAlert(title, body);
+    return false;
   }
 }
 
@@ -91,7 +121,7 @@ export class WebNotificationService implements INotificationService {
     }
   }
 
-  async show(payload: NotificationPayload): Promise<void> {
-    await notify(payload.title, payload.body);
+  async show(payload: NotificationPayload): Promise<boolean> {
+    return notify(payload.title, payload.body);
   }
 }

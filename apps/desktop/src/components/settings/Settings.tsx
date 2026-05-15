@@ -8,9 +8,10 @@ import {
 } from '../../lib/notifications.js';
 import { checkCloudSyncStatus } from '../../lib/cloudSync.js';
 import {
+  isAudioUnlocked,
   playSegmentCompleteSound,
   playStackCompleteSound,
-  unlockNotificationAudio,
+  unlockAudio,
 } from '../../lib/sounds.js';
 import { Card } from '../ui/Card.js';
 import { Button } from '../ui/Button.js';
@@ -58,15 +59,26 @@ export function Settings() {
   const [syncStatus, setSyncStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [audioMessage, setAudioMessage] = useState<string | null>(null);
+  const [enablingSound, setEnablingSound] = useState(false);
 
   useEffect(() => {
     refreshSyncStatus().catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (soundEnabled && !isAudioUnlocked()) {
+      setAudioMessage('Tap Enable Sound once on this device to allow timer chimes.');
+    }
+  }, [soundEnabled]);
+
   async function testNotifications() {
     setTestingNotifications(true);
     try {
-      await unlockNotificationAudio();
+      if (soundEnabled && !isAudioUnlocked()) {
+        const unlocked = await unlockAudio();
+        setAudioMessage(unlocked ? null : 'Sound is blocked. Tap Enable Sound and try again.');
+      }
       if (soundEnabled) playSegmentCompleteSound();
       if (notificationsEnabled) {
         await ensureNotificationPermission();
@@ -93,9 +105,37 @@ export function Settings() {
     }
   }
 
+  async function enableSound() {
+    setEnablingSound(true);
+    try {
+      const unlocked = await unlockAudio();
+      if (!unlocked) {
+        setAudioMessage('Sound is blocked. Tap Enable Sound again after interacting with the page.');
+        return;
+      }
+
+      await setSound(true);
+      setAudioMessage('Sound enabled on this device.');
+      window.setTimeout(() => setAudioMessage(null), 2200);
+    } catch (error) {
+      console.error('[settings-store] Failed to enable sound', error);
+      setAudioMessage('Sound could not be enabled on this device.');
+    } finally {
+      setEnablingSound(false);
+    }
+  }
+
   function handleSoundChange(enabled: boolean) {
-    setSound(enabled).catch((error) => {
-      console.error('[settings-store] Failed to sync sound setting', error);
+    if (!enabled) {
+      setSound(false).catch((error) => {
+        console.error('[settings-store] Failed to sync sound setting', error);
+      });
+      setAudioMessage(null);
+      return;
+    }
+
+    enableSound().catch((error) => {
+      console.error('[settings-store] Failed to enable sound', error);
     });
   }
 
@@ -210,10 +250,30 @@ export function Settings() {
           />
           <ToggleRow
             label="Sound Cues"
-            description="Play a sound when transitions occur"
+            description="Play offline chimes when transitions occur"
             checked={soundEnabled}
             onChange={handleSoundChange}
           />
+          <div className="flex flex-col gap-3 py-4 border-b border-surface-100 dark:border-gray-700/50 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                Enable Sound
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Required once on iPhone Safari and installed PWAs
+              </p>
+              {audioMessage && <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">{audioMessage}</p>}
+            </div>
+            <Button
+              size="sm"
+              variant={soundEnabled && isAudioUnlocked() ? 'secondary' : 'primary'}
+              onClick={() => enableSound()}
+              loading={enablingSound}
+              className="w-full sm:w-auto"
+            >
+              Enable Sound
+            </Button>
+          </div>
           <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-medium text-gray-900 dark:text-gray-100">

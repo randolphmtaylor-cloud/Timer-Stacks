@@ -31,7 +31,12 @@ export abstract class BaseSessionStorage implements ISessionStorage {
   }
 
   async saveActiveSessions(sessions: Session[]): Promise<void> {
-    await this.writeJSON(STORAGE_KEYS.activeSessions, sessions);
+    const active = sessions.filter(
+      (session) =>
+        (session.status === 'running' || session.status === 'paused') &&
+        session.completedAt === null,
+    );
+    await this.writeJSON(STORAGE_KEYS.activeSessions, active);
   }
 
   async loadActiveSessions(): Promise<Session[]> {

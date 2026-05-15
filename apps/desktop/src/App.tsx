@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { formatMs } from '@timer-stacks/core';
 import { useSettingsStore } from './stores/settingsStore.js';
 import { useStackStore } from './stores/stackStore.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import { ensureStartupNotificationPermission } from './lib/notifications.js';
-import { unlockNotificationAudio } from './lib/sounds.js';
+import { updateDesktopTrayTimer } from './lib/desktopTray.js';
 import { Layout } from './components/layout/Layout.js';
 import { Dashboard } from './components/dashboard/Dashboard.js';
 import { StackBuilder } from './components/builder/StackBuilder.js';
@@ -40,7 +41,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const { load: loadStacks, stacks } = useStackStore();
-  const { hydrate: hydrateSessions } = useSessionStore();
+  const { hydrate: hydrateSessions, sessions, getSessionState } = useSessionStore();
   const { loadCloudSettings, notificationsEnabled } = useSettingsStore();
 
   // Bootstrap
@@ -57,24 +58,33 @@ export default function App() {
     }
   }, [notificationsEnabled]);
 
-  useEffect(() => {
-    const unlock = () => {
-      unlockNotificationAudio().catch(() => {});
-    };
-    window.addEventListener('pointerdown', unlock, { once: true });
-    window.addEventListener('keydown', unlock, { once: true });
-    return () => {
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('keydown', unlock);
-    };
-  }, []);
-
   // Restore sessions after stacks are loaded
   useEffect(() => {
     if (stacks.length > 0) {
       hydrateSessions(stacks);
     }
   }, [stacks, hydrateSessions]);
+
+  useEffect(() => {
+    const updateTray = () => {
+      const active = sessions.find((session) => session.status === 'running') ??
+        sessions.find((session) => session.status === 'paused');
+
+      if (!active) {
+        updateDesktopTrayTimer(null).catch(() => {});
+        return;
+      }
+
+      const state = getSessionState(active.sessionId);
+      const prefix = active.status === 'paused' ? 'Paused ' : '';
+      const label = `${prefix}${formatMs(state?.stackRemainingMs ?? 0)}`;
+      updateDesktopTrayTimer(label).catch(() => {});
+    };
+
+    updateTray();
+    const id = window.setInterval(updateTray, 1000);
+    return () => window.clearInterval(id);
+  }, [getSessionState, sessions]);
 
   // Keyboard shortcut: N = new stack
   useEffect(() => {

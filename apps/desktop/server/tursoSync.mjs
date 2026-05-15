@@ -149,7 +149,7 @@ function normalizeSettings(settings) {
     theme: ['light', 'dark', 'system'].includes(settings?.theme) ? settings.theme : 'system',
     notificationsEnabled:
       typeof settings?.notificationsEnabled === 'boolean' ? settings.notificationsEnabled : true,
-    soundEnabled: typeof settings?.soundEnabled === 'boolean' ? settings.soundEnabled : true,
+    soundEnabled: typeof settings?.soundEnabled === 'boolean' ? settings.soundEnabled : false,
     updatedAt: Number.isFinite(Number(settings?.updatedAt)) ? Number(settings.updatedAt) : Date.now(),
   };
 }

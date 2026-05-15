@@ -9,10 +9,15 @@ import { Button } from '../ui/Button.js';
 export function Dashboard() {
   const navigate = useNavigate();
   const { stacks } = useStackStore();
-  const { sessions } = useSessionStore();
+  const { sessions, getSessionState } = useSessionStore();
 
   const activeSessions = sessions.filter(
-    (s) => s.status === 'running' || s.status === 'paused',
+    (s) => {
+      if (s.completedAt !== null) return false;
+      if (s.status !== 'running' && s.status !== 'paused') return false;
+      const state = getSessionState(s.sessionId);
+      return s.status === 'paused' || (state?.stackRemainingMs ?? 1) > 0;
+    },
   );
   const userStacks = stacks.filter((s) => !s.isTemplate);
   const templates = stacks.filter((s) => s.isTemplate);

@@ -17,12 +17,17 @@ import type { Session, TimerStack } from '@timer-stacks/core';
 export default function DashboardScreen() {
   const router = useRouter();
   const { stacks } = useStackStore();
-  const { sessions, start, previousSegment, resetSegment } = useSessionStore();
+  const { sessions, start, previousSegment, resetSegment, getSessionState } = useSessionStore();
   const dark = useColorScheme() === 'dark';
   const colors = dark ? DARK : LIGHT;
 
   const activeSessions = sessions.filter(
-    (s) => s.status === 'running' || s.status === 'paused',
+    (s) => {
+      if (s.completedAt !== null) return false;
+      if (s.status !== 'running' && s.status !== 'paused') return false;
+      const state = getSessionState(s.sessionId);
+      return s.status === 'paused' || (state?.stackRemainingMs ?? 1) > 0;
+    },
   );
 
   function handleStart(stack: TimerStack) {

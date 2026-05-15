@@ -10,9 +10,11 @@ import {
 } from 'react-native';
 import { useSettingsStore } from '../src/stores/settingsStore.js';
 import { useStackStore } from '../src/stores/stackStore.js';
+import { ExpoNotificationService } from '../src/lib/notifications.js';
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 const syncApiBaseUrl = env.EXPO_PUBLIC_SYNC_API_URL ?? '';
+const notificationService = new ExpoNotificationService();
 
 async function readStatusPayload(
   response: Response,
@@ -90,6 +92,15 @@ export default function SettingsScreen() {
     }
   }
 
+  function handleNotificationsChange(enabled: boolean) {
+    setNotifications(enabled);
+    if (enabled) {
+      notificationService.requestPermission().catch((error) => {
+        console.error('[notifications] Failed to request permission from settings', error);
+      });
+    }
+  }
+
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.bg }]} contentContainerStyle={styles.content}>
       {/* Cloud sync */}
@@ -152,7 +163,7 @@ export default function SettingsScreen() {
           </View>
           <Switch
             value={notificationsEnabled}
-            onValueChange={setNotifications}
+            onValueChange={handleNotificationsChange}
             trackColor={{ true: '#6366f1' }}
           />
         </View>
