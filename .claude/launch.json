@@ -5,7 +5,8 @@
       "name": "Desktop (Vite)",
       "runtimeExecutable": "sh",
       "runtimeArgs": ["node_modules/.pnpm/node_modules/.bin/vite", "apps/desktop"],
-      "port": 1420
+      "port": 1420,
+      "autoPort": false
     },
     {
       "name": "Mobile (Expo)",
