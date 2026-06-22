@@ -16,10 +16,11 @@ import {
   verticalListSortingStrategy,
   arrayMove,
 } from '@dnd-kit/sortable';
-import { formatMsHuman } from '@timer-stacks/core';
+import { formatMsHuman, type ParsedTask } from '@timer-stacks/core';
 import { useStackStore } from '../../stores/stackStore.js';
 import { SegmentRow, type SegmentDraft } from './SegmentRow.js';
 import { Button } from '../ui/Button.js';
+import { PasteImportModal } from './PasteImportModal.js';
 
 const DEFAULT_COLOR = '#6366f1';
 const COLORS = ['#6366f1','#8b5cf6','#ec4899','#ef4444','#f97316','#f59e0b','#10b981','#06b6d4'];
@@ -45,6 +46,7 @@ export function StackBuilder() {
   const [segments, setSegments] = useState<SegmentDraft[]>([makeSegment(0), makeSegment(1)]);
   const [isTemplate, setIsTemplate] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
 
   // Load existing stack for editing
   useEffect(() => {
@@ -125,6 +127,20 @@ export function StackBuilder() {
 
   function removeSegment(id: string) {
     setSegments((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  function handlePasteImport(tasks: ParsedTask[]) {
+    const newSegments: SegmentDraft[] = tasks.map((t, i) => ({
+      id: uuidv4(),
+      label: t.title,
+      durationMs: t.durationSeconds * 1000,
+      color: COLORS[(segments.length + i) % COLORS.length] ?? DEFAULT_COLOR,
+    }));
+    setSegments((prev) => {
+      // Replace placeholder segments only — any user-entered label or custom duration is preserved
+      const hasUserContent = prev.some((s) => s.label.trim() !== '' || s.durationMs !== 5 * 60 * 1000);
+      return hasUserContent ? [...prev, ...newSegments] : newSegments;
+    });
   }
 
   async function handleSave() {
@@ -252,9 +268,19 @@ export function StackBuilder() {
       <div className="mb-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Segments</h2>
-          <span className="text-sm font-mono text-gray-500 dark:text-gray-400">
-            Total: {formatMsHuman(totalMs)}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-mono text-gray-500 dark:text-gray-400">
+              Total: {formatMsHuman(totalMs)}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPasteOpen(true)}
+              className="text-xs text-accent hover:text-accent-dark"
+            >
+              📋 Paste Tasks
+            </Button>
+          </div>
         </div>
 
         <DndContext
@@ -287,6 +313,12 @@ export function StackBuilder() {
           + Add Segment
         </Button>
       </div>
+
+      <PasteImportModal
+        open={pasteOpen}
+        onClose={() => setPasteOpen(false)}
+        onImport={handlePasteImport}
+      />
 
       {/* Actions */}
       <div className="grid grid-cols-1 gap-3 pt-4 border-t border-surface-100 dark:border-gray-700/50 sm:flex sm:justify-end">

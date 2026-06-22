@@ -5,3 +5,4 @@ export * from './seeds/templates.js';
 export * from './notifications.js';
 export * from './utils/time.js';
 export * from './utils/id.js';
+export * from './utils/parsePastedTasks.js';

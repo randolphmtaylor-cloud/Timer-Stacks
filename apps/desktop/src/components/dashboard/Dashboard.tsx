@@ -1,15 +1,37 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStackStore } from '../../stores/stackStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { StackCard } from './StackCard.js';
 import { RunningSessionCard } from './RunningSessionCard.js';
 import { Button } from '../ui/Button.js';
+import { PasteImportModal } from '../builder/PasteImportModal.js';
+import type { ParsedTask } from '@timer-stacks/core';
+
+const COLORS = ['#6366f1','#8b5cf6','#ec4899','#ef4444','#f97316','#f59e0b','#10b981','#06b6d4'];
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { stacks } = useStackStore();
+  const { stacks, create } = useStackStore();
   const { sessions, getSessionState } = useSessionStore();
+  const [pasteOpen, setPasteOpen] = useState(false);
+
+  async function handlePasteCreateStack(tasks: ParsedTask[]) {
+    const segments = tasks.map((t, i) => ({
+      label: t.title,
+      durationMs: t.durationSeconds * 1000,
+      color: COLORS[i % COLORS.length] ?? '#6366f1',
+    }));
+    const totalDurationMs = segments.reduce((acc, s) => acc + s.durationMs, 0);
+    const dateLabel = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date());
+    const stack = await create({
+      name: `Work Block — ${dateLabel}`,
+      totalDurationMs,
+      segments,
+      isTemplate: false,
+    });
+    navigate(`/builder?edit=${stack.stackId}`);
+  }
 
   const activeSessions = sessions.filter(
     (s) => {
@@ -37,9 +59,14 @@ export function Dashboard() {
                 : 'No stacks yet'}
           </p>
         </div>
-        <Button variant="primary" size="md" onClick={() => navigate('/builder')} className="shrink-0">
-          + New Stack
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="secondary" size="md" onClick={() => setPasteOpen(true)}>
+            📋 Paste Tasks
+          </Button>
+          <Button variant="primary" size="md" onClick={() => navigate('/builder')}>
+            + New Stack
+          </Button>
+        </div>
       </div>
 
       <div className="w-full max-w-5xl mx-auto space-y-8 px-4 py-5 sm:px-6 md:px-8 md:py-6 md:space-y-10">
@@ -89,6 +116,12 @@ export function Dashboard() {
           </>
         )}
       </div>
+
+      <PasteImportModal
+        open={pasteOpen}
+        onClose={() => setPasteOpen(false)}
+        onImport={handlePasteCreateStack}
+      />
     </div>
   );
 }
