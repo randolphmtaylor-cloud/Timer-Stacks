@@ -1,8 +1,68 @@
 import React, { useEffect } from 'react';
 import { useSessionStore } from '../../stores/sessionStore.js';
-import { formatMsHuman } from '@timer-stacks/core';
+import { useStackStore } from '../../stores/stackStore.js';
+import { buildSessionExport, formatMsHuman } from '@timer-stacks/core';
+import type { SessionRecord } from '@timer-stacks/core';
 import { Card } from '../ui/Card.js';
 import { Button } from '../ui/Button.js';
+
+function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ExportButton({ record }: { record: SessionRecord }) {
+  const { stacks } = useStackStore();
+
+  function handleExport(e: React.MouseEvent) {
+    e.stopPropagation();
+    const stack = stacks.find((s) => s.stackId === record.stackId);
+    if (!stack) {
+      // Stack was deleted — export what we have without segment detail
+      downloadJson(
+        `session-${record.sessionId.slice(0, 8)}.json`,
+        {
+          exportVersion: 1,
+          exportedAt: new Date().toISOString(),
+          stackId: record.stackId,
+          stackName: record.stackName,
+          sessionId: record.sessionId,
+          sessionStatus: record.status,
+          startedAt: new Date(record.startedAt).toISOString(),
+          endedAt: new Date(record.endedAt).toISOString(),
+          totalActualDurationMs: record.totalElapsedMs,
+          segmentsCompleted: record.segmentsCompleted,
+          totalSegments: record.totalSegments,
+          note: 'Stack definition was deleted — segment detail unavailable.',
+        },
+      );
+      return;
+    }
+
+    const payload = buildSessionExport(record, stack);
+    const datePart = new Date(record.startedAt).toISOString().slice(0, 10);
+    const namePart = record.stackName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    downloadJson(`session-${namePart}-${datePart}.json`, payload);
+  }
+
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shrink-0"
+      aria-label="Export session as JSON"
+      title="Export session as JSON"
+      onClick={handleExport}
+    >
+      ↓ Export
+    </Button>
+  );
+}
 
 export function History() {
   const { history, loadHistory } = useSessionStore();
@@ -69,6 +129,9 @@ export function History() {
                     <span>{formatMsHuman(record.totalElapsedMs)} elapsed</span>
                   </div>
                 </div>
+
+                {/* Export */}
+                <ExportButton record={record} />
               </Card>
             );
           })}

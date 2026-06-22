@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Session, TimerStack } from '@timer-stacks/core';
 import { formatMsHuman } from '@timer-stacks/core';
@@ -16,13 +16,29 @@ interface Props {
 
 export function RunningSessionCard({ session, stack }: Props) {
   const navigate = useNavigate();
-  const { pause, resume, previousSegment, resetSegment } = useSessionStore();
+  const { pause, resume, previousSegment, resetSegment, cancel } = useSessionStore();
   const state = useSessionTick(session.sessionId);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   const activeSegment = stack.segments[session.activeSegmentIndex];
   const isRunning = session.status === 'running';
-  const isPaused = session.status === 'paused';
   const segColor = activeSegment?.color ?? '#6366f1';
+
+  function handleCancel(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirmCancel) {
+      setConfirmCancel(true);
+      return;
+    }
+    cancel(session.sessionId, stack).catch((error) => {
+      console.error('[RunningSessionCard] Cancel failed', error);
+    });
+  }
+
+  function handleCancelDismiss(e: React.MouseEvent) {
+    e.stopPropagation();
+    setConfirmCancel(false);
+  }
 
   return (
     <div
@@ -173,6 +189,38 @@ export function RunningSessionCard({ session, stack }: Props) {
           >
             Open session →
           </Button>
+
+          {/* Cancel — destructive, with inline confirmation */}
+          {confirmCancel ? (
+            <>
+              <Button
+                size="sm"
+                variant="danger"
+                aria-label="Confirm cancel session"
+                onClick={handleCancel}
+              >
+                Confirm cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Keep session"
+                onClick={handleCancelDismiss}
+              >
+                Keep
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 min-w-0"
+              aria-label="Cancel session"
+              onClick={handleCancel}
+            >
+              ✕ Cancel
+            </Button>
+          )}
         </div>
       </div>
     </div>

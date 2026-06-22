@@ -76,8 +76,12 @@ export default function App() {
       }
 
       const state = getSessionState(active.sessionId);
-      const prefix = active.status === 'paused' ? 'Paused ' : '';
-      const label = `${prefix}${formatMs(state?.stackRemainingMs ?? 0)}`;
+      const paused = active.status === 'paused';
+      const segRemaining = formatMs(state?.segmentRemainingMs ?? 0);
+      const stackRemaining = formatMs(state?.stackRemainingMs ?? 0);
+      const prefix = paused ? '⏸ ' : '';
+      // Show "seg / stack" so the tray conveys both timers at a glance
+      const label = `${prefix}${segRemaining} / ${stackRemaining}`;
       updateDesktopTrayTimer(label).catch(() => {});
     };
 

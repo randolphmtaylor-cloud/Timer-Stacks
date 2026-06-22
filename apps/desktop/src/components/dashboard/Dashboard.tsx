@@ -4,6 +4,8 @@ import { useStackStore } from '../../stores/stackStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { StackCard } from './StackCard.js';
 import { RunningSessionCard } from './RunningSessionCard.js';
+import { AppleTimerHeader } from './AppleTimerHeader.js';
+import { DashboardTimer } from './DashboardTimer.js';
 import { Button } from '../ui/Button.js';
 import { PasteImportModal } from '../builder/PasteImportModal.js';
 import type { ParsedTask } from '@timer-stacks/core';
@@ -70,6 +72,14 @@ export function Dashboard() {
       </div>
 
       <div className="w-full max-w-5xl mx-auto space-y-8 px-4 py-5 sm:px-6 md:px-8 md:py-6 md:space-y-10">
+
+        {/* ── Apple-style stack session header (only when sessions active) ── */}
+        {activeSessions.length > 0 && (
+          <AppleTimerHeader sessions={activeSessions} stacks={stacks} />
+        )}
+
+        {/* ── Quick countdown timer ────────────────────────────────────── */}
+        <DashboardTimer />
 
         {/* ── Active sessions — pinned, visually prominent ──────── */}
         {activeSessions.length > 0 && (
