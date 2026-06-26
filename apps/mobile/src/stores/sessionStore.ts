@@ -16,6 +16,7 @@ import {
 import { AsyncSessionStorage } from '../lib/storage.js';
 import { ExpoNotificationService } from '../lib/notifications.js';
 import { saveCloudSessionRecord } from '../lib/cloudSync.js';
+import { watchBridge, buildWatchSnapshot } from '../lib/watchConnectivity.js';
 import { useSettingsStore } from './settingsStore.js';
 import { useStackStore } from './stackStore.js';
 
@@ -24,6 +25,21 @@ const notificationService = new ExpoNotificationService();
 export const sessionManager = new SessionManager();
 const deliveredCompletions = new Set<string>();
 const persistedRecords = new Set<string>();
+
+function pushWatchSnapshot(session: Session, stack: TimerStack): void {
+  try {
+    const state = computeSessionState(session, stack, Date.now());
+    watchBridge.sendSessionSnapshot(
+      buildWatchSnapshot(session, stack, {
+        activeSegmentIndex: session.activeSegmentIndex,
+        segmentRemainingMs: state.segmentRemainingMs,
+        totalRemainingMs:   state.stackRemainingMs,
+      }),
+    );
+  } catch {
+    // Never throw — watch sync is best-effort
+  }
+}
 
 function isActiveSession(session: Session): boolean {
   return (
@@ -132,6 +148,9 @@ sessionManager.subscribe(async (events) => {
           } else {
             showInAppAlert(msg.title, msg.body);
           }
+          // Push updated snapshot so the watch advances to the new segment
+          const stk = useStackStore.getState().stacks.find((s) => s.stackId === event.session.stackId);
+          if (stk) pushWatchSnapshot(event.session, stk);
         }
         break;
       }
@@ -161,12 +180,32 @@ sessionManager.subscribe(async (events) => {
         const stack = useStackStore.getState().stacks.find((item) => item.stackId === event.session.stackId);
         if (stack) {
           await persistCompletedSession(event.session, stack);
+          pushWatchSnapshot({ ...event.session, status: 'completed' }, stack);
         }
         break;
       }
     }
   }
   useSessionStore.getState().syncFromManager();
+});
+
+// Wire watch → phone action commands.
+// The watch can pause / resume / skip / stop. After applying the action the
+// store pushes a fresh snapshot so the watch display updates immediately.
+watchBridge.onAction((action, sessionId) => {
+  const store = useSessionStore.getState();
+  switch (action) {
+    case 'pause':       store.pause(sessionId);       break;
+    case 'resume':      store.resume(sessionId);      break;
+    case 'skipSegment': store.skip(sessionId);        break;
+    case 'stopSession': {
+      const stack = useStackStore.getState().stacks.find(
+        (s) => s.stackId === sessionManager.getSession(sessionId)?.stackId,
+      );
+      if (stack) store.cancel(sessionId, stack).catch(() => {});
+      break;
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -209,12 +248,34 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     if (useSettingsStore.getState().notificationsEnabled) {
       notificationService.requestPermission().catch(() => {});
     }
+    pushWatchSnapshot(session, stack);
     return session;
   },
 
-  pause: (sessionId) => { sessionManager.pause(sessionId); get().syncFromManager(); },
-  resume: (sessionId) => { sessionManager.resume(sessionId); get().syncFromManager(); },
-  skip: (sessionId) => { sessionManager.skip(sessionId); get().syncFromManager(); },
+  pause: (sessionId) => {
+    sessionManager.pause(sessionId);
+    get().syncFromManager();
+    const session = sessionManager.getSession(sessionId);
+    const stack = useStackStore.getState().stacks.find((s) => s.stackId === session?.stackId);
+    if (session && stack) pushWatchSnapshot(session, stack);
+  },
+
+  resume: (sessionId) => {
+    sessionManager.resume(sessionId);
+    get().syncFromManager();
+    const session = sessionManager.getSession(sessionId);
+    const stack = useStackStore.getState().stacks.find((s) => s.stackId === session?.stackId);
+    if (session && stack) pushWatchSnapshot(session, stack);
+  },
+
+  skip: (sessionId) => {
+    sessionManager.skip(sessionId);
+    get().syncFromManager();
+    const session = sessionManager.getSession(sessionId);
+    const stack = useStackStore.getState().stacks.find((s) => s.stackId === session?.stackId);
+    if (session && stack) pushWatchSnapshot(session, stack);
+  },
+
   resetSegment: (sessionId) => { sessionManager.resetSegment(sessionId); get().syncFromManager(); },
   previousSegment: (sessionId) => { sessionManager.previousSegment(sessionId); get().syncFromManager(); },
   reset: (sessionId) => { sessionManager.reset(sessionId); get().syncFromManager(); },
@@ -235,6 +296,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     persistedStorage.saveActiveSessions(active).catch((error) => {
       console.error('[session-store] Failed to persist active sessions after cancel', error);
     });
+    // Push a terminal snapshot so the watch shows completion state
+    if (session) pushWatchSnapshot({ ...session, status: 'cancelled' }, stack);
   },
 
   syncFromManager: () => {

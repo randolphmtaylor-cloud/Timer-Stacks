@@ -49,6 +49,10 @@ export default function RootLayout() {
           options={{ title: 'Templates', tabBarLabel: 'Templates', tabBarIcon: ({ color }) => <TabIcon emoji="◫" color={color} /> }}
         />
         <Tabs.Screen
+          name="timer"
+          options={{ title: 'Timer', tabBarLabel: 'Timer', tabBarIcon: ({ color }) => <TabIcon emoji="⏱" color={color} /> }}
+        />
+        <Tabs.Screen
           name="history"
           options={{ title: 'History', tabBarLabel: 'History', tabBarIcon: ({ color }) => <TabIcon emoji="◷" color={color} /> }}
         />

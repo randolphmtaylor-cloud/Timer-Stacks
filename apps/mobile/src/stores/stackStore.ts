@@ -73,33 +73,20 @@ export const useStackStore = create<StackState>((set, get) => ({
   create: async (input) => {
     const stack = await storage.create(input);
     set((s) => ({ stacks: [...s.stacks, stack] }));
-    try {
-      await upsertCloudStack(stack);
-    } catch (error) {
-      await storage.delete(stack.stackId);
-      set((s) => ({ stacks: s.stacks.filter((st) => st.stackId !== stack.stackId) }));
-      throw error;
-    }
+    upsertCloudStack(stack).catch((error) => {
+      console.error('[stack-store] Failed to sync new stack to cloud (will retry on next sync)', error);
+    });
     return stack;
   },
 
   update: async (input) => {
-    const previous = await storage.getById(input.stackId);
     const stack = await storage.update(input);
     set((s) => ({
       stacks: s.stacks.map((st) => (st.stackId === stack.stackId ? stack : st)),
     }));
-    try {
-      await upsertCloudStack(stack);
-    } catch (error) {
-      if (previous) {
-        await storage.update(previous);
-        set((s) => ({
-          stacks: s.stacks.map((st) => (st.stackId === previous.stackId ? previous : st)),
-        }));
-      }
-      throw error;
-    }
+    upsertCloudStack(stack).catch((error) => {
+      console.error('[stack-store] Failed to sync updated stack to cloud (will retry on next sync)', error);
+    });
     return stack;
   },
 

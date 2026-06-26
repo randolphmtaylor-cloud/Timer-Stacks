@@ -136,13 +136,32 @@ export const useStackStore = create<StackState>((set, get) => ({
       conflictsResolved,
     });
 
-    await storage.replaceAll(mergedStacks);
-    console.info('[stack-store] Updating UI state with merged stacks', {
-      stackCount: mergedStacks.length,
-    });
-    set({ stacks: mergedStacks });
+    // Re-read local stacks to capture any stacks created while the network
+    // request was in flight. Without this, a newly created stack can be wiped
+    // because `localStacks` above was a snapshot taken before the create ran.
+    const postSyncLocalStacks = await storage.getAll();
+    const mergedIds = new Set(mergedStacks.map((s) => s.stackId));
+    const lateAdditions = postSyncLocalStacks.filter(
+      (s) => !mergedIds.has(s.stackId) && !deletedStackIdSet.has(s.stackId),
+    );
+    const finalStacks = lateAdditions.length > 0
+      ? [...mergedStacks, ...lateAdditions]
+      : mergedStacks;
 
-    const uploadedStacks = await upsertCloudStacks(mergedStacks);
+    if (lateAdditions.length > 0) {
+      console.info('[stack-store] Preserved stacks created during sync window', {
+        lateAdditionCount: lateAdditions.length,
+        lateAdditionIds: lateAdditions.map((s) => s.stackId),
+      });
+    }
+
+    await storage.replaceAll(finalStacks);
+    console.info('[stack-store] Updating UI state with merged stacks', {
+      stackCount: finalStacks.length,
+    });
+    set({ stacks: finalStacks });
+
+    const uploadedStacks = await upsertCloudStacks(finalStacks);
     console.info('[stack-store] Uploaded merged stacks to cloud', {
       uploadedStackCount: mergedStacks.length,
       returnedCloudStackCount: uploadedStacks.length,
@@ -152,40 +171,33 @@ export const useStackStore = create<StackState>((set, get) => ({
   create: async (input) => {
     const stack = await storage.create(input);
     set((s) => ({ stacks: [...s.stacks, stack] }));
-    try {
-      await upsertCloudStack(stack);
-    } catch (error) {
-      await storage.delete(stack.stackId);
-      set((s) => ({ stacks: s.stacks.filter((st) => st.stackId !== stack.stackId) }));
-      throw error;
-    }
+    // Fire-and-forget cloud sync — a failure must not roll back the local
+    // create, because that would wipe the stack while the session is running.
+    // The next syncCloud call will push it to the cloud.
+    upsertCloudStack(stack).catch((error) => {
+      console.error('[stack-store] Failed to sync new stack to cloud (will retry on next sync)', error);
+    });
     return stack;
   },
 
   update: async (input) => {
-    const previous = await storage.getById(input.stackId);
     const stack = await storage.update(input);
     set((s) => ({
       stacks: s.stacks.map((st) => (st.stackId === stack.stackId ? stack : st)),
     }));
-    try {
-      await upsertCloudStack(stack);
-    } catch (error) {
-      if (previous) {
-        await storage.update(previous);
-        set((s) => ({
-          stacks: s.stacks.map((st) => (st.stackId === previous.stackId ? previous : st)),
-        }));
-      }
-      throw error;
-    }
+    upsertCloudStack(stack).catch((error) => {
+      console.error('[stack-store] Failed to sync updated stack to cloud (will retry on next sync)', error);
+    });
     return stack;
   },
 
   delete: async (stackId) => {
-    await deleteCloudStack(stackId);
+    // Delete locally first so the UI is never blocked by a network failure.
     await storage.delete(stackId);
     set((s) => ({ stacks: s.stacks.filter((st) => st.stackId !== stackId) }));
+    deleteCloudStack(stackId).catch((error) => {
+      console.error('[stack-store] Failed to delete stack from cloud', error);
+    });
   },
 
   duplicate: async (stackId) => {

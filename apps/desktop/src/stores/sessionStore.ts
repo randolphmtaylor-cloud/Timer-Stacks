@@ -201,6 +201,8 @@ interface SessionStoreState {
   syncFromManager: () => void;
   loadHistory: () => Promise<void>;
   hydrate: (stacks: TimerStack[]) => Promise<void>;
+  /** Push updated stack definitions into the session engine without re-hydrating sessions. */
+  updateStacks: (stacks: TimerStack[]) => void;
   getSessionState: (sessionId: string) => SessionState | null;
 }
 
@@ -297,6 +299,10 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       sessionManager.hydrate(active, stacks);
     }
     set({ sessions: activeSessionsOnly(sessionManager.getAllSessions()) });
+  },
+
+  updateStacks: (stacks) => {
+    sessionManager.hydrate([], stacks);
   },
 
   getSessionState: (sessionId) => sessionManager.getSessionState(sessionId),

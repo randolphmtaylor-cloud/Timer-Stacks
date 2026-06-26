@@ -15,12 +15,22 @@ interface Props {
 export function StackCard({ stack }: Props) {
   const navigate = useNavigate();
   const { delete: deleteStack, duplicate } = useStackStore();
-  const { start } = useSessionStore();
+  const { start, sessions } = useSessionStore();
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const isRunning = sessions.some(
+    (s) => s.stackId === stack.stackId && (s.status === 'running' || s.status === 'paused'),
+  );
 
   const handleStart = () => {
     const session = start(stack);
     navigate(`/session/${session.sessionId}`);
+  };
+
+  const handleDelete = () => {
+    deleteStack(stack.stackId).catch((error) => {
+      console.error('[StackCard] Delete failed', error);
+    });
   };
 
   return (
@@ -77,9 +87,13 @@ export function StackCard({ stack }: Props) {
       <ConfirmDialog
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
-        onConfirm={() => deleteStack(stack.stackId)}
+        onConfirm={handleDelete}
         title="Delete Stack"
-        message={`Are you sure you want to delete "${stack.name}"? This cannot be undone.`}
+        message={
+          isRunning
+            ? `"${stack.name}" is currently running. Deleting it will not stop the active session, but the stack will be removed from your library. Are you sure?`
+            : `Are you sure you want to delete "${stack.name}"? This cannot be undone.`
+        }
         confirmLabel="Delete"
         danger
       />

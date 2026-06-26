@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { formatMs } from '@timer-stacks/core';
 import { useSettingsStore } from './stores/settingsStore.js';
@@ -41,8 +41,13 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const { load: loadStacks, stacks } = useStackStore();
-  const { hydrate: hydrateSessions, sessions, getSessionState } = useSessionStore();
+  const { hydrate: hydrateSessions, updateStacks, sessions, getSessionState } = useSessionStore();
   const { loadCloudSettings, notificationsEnabled } = useSettingsStore();
+  // Guard: hydrate saved sessions exactly once after stacks first load.
+  // Re-running on every stacks change (e.g. cloud sync) is dangerous because
+  // sessionManager.hydrate() can overwrite the in-memory running session with
+  // a stale localStorage snapshot.
+  const sessionHydratedRef = useRef(false);
 
   // Bootstrap
   useEffect(() => {
@@ -58,12 +63,23 @@ export default function App() {
     }
   }, [notificationsEnabled]);
 
-  // Restore sessions after stacks are loaded
+  // Restore sessions after stacks are loaded — runs exactly once.
   useEffect(() => {
-    if (stacks.length > 0) {
+    if (stacks.length > 0 && !sessionHydratedRef.current) {
+      sessionHydratedRef.current = true;
       hydrateSessions(stacks);
     }
   }, [stacks, hydrateSessions]);
+
+  // Keep the session engine's stack definitions current when cloud sync refreshes
+  // stacks. This lets active sessions compute correct remaining times even after
+  // a stack definition is updated, without re-hydrating (and potentially
+  // overwriting) in-memory session state.
+  useEffect(() => {
+    if (stacks.length > 0 && sessionHydratedRef.current) {
+      updateStacks(stacks);
+    }
+  }, [stacks, updateStacks]);
 
   useEffect(() => {
     const updateTray = () => {

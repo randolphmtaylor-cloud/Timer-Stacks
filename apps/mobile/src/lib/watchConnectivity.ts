@@ -65,6 +65,7 @@
 //   ts_session_id     — session ID string (Watch → iPhone)
 // ---------------------------------------------------------------------------
 
+import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 import type { Session, SessionStatus, TimerStack } from '@timer-stacks/core';
 
 // ---------------------------------------------------------------------------
@@ -149,16 +150,13 @@ export interface IWatchConnectivityBridge {
 // ---------------------------------------------------------------------------
 
 /**
- * Safe no-op bridge used until the native WatchKit module is built.
- * All callers compile and run correctly against this stub.
+ * Safe no-op bridge used on Android, in tests, or before the native module loads.
  */
 export class NoOpWatchBridge implements IWatchConnectivityBridge {
-  sendSessionSnapshot(_snapshot: WatchSessionSnapshot): void {
-    // TODO: forward to native WCSession module when available
-  }
+  sendSessionSnapshot(_snapshot: WatchSessionSnapshot): void {}
 
   onAction(_handler: (action: WatchAction, sessionId: string) => void): UnsubscribeFn {
-    return () => {}; // nothing to unsubscribe from
+    return () => {};
   }
 
   isReachable(): boolean {
@@ -167,14 +165,62 @@ export class NoOpWatchBridge implements IWatchConnectivityBridge {
 }
 
 // ---------------------------------------------------------------------------
-// Singleton
+// Native bridge (iOS only)
 // ---------------------------------------------------------------------------
 
 /**
- * The bridge instance used by the rest of the app.
- * Replace `NoOpWatchBridge` with the real implementation when ready.
+ * Real implementation backed by WatchConnectivityBridge.swift via RCT_EXTERN_MODULE.
+ * Only instantiated when the native module is present (iOS + real device or simulator).
  */
-export const watchBridge: IWatchConnectivityBridge = new NoOpWatchBridge();
+class NativeWatchBridge implements IWatchConnectivityBridge {
+  private readonly native = NativeModules.WatchConnectivityBridge;
+  private readonly emitter = new NativeEventEmitter(NativeModules.WatchConnectivityBridge);
+
+  sendSessionSnapshot(snapshot: WatchSessionSnapshot): void {
+    try {
+      const json = JSON.stringify(snapshot);
+      this.native.sendSessionSnapshot(json).catch((err: unknown) => {
+        console.warn('[WatchBridge] sendSessionSnapshot failed:', err);
+      });
+    } catch (err) {
+      console.warn('[WatchBridge] sendSessionSnapshot serialization failed:', err);
+    }
+  }
+
+  onAction(handler: (action: WatchAction, sessionId: string) => void): UnsubscribeFn {
+    const subscription = this.emitter.addListener(
+      'watchAction',
+      (event: { action: string; sessionId: string }) => {
+        handler(event.action as WatchAction, event.sessionId);
+      },
+    );
+    return () => subscription.remove();
+  }
+
+  isReachable(): boolean {
+    // Synchronous check not exposed; use the async native method if needed.
+    // For now, assume reachable if the module is present — the Swift side
+    // handles actual reachability and falls back to updateApplicationContext.
+    return true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Singleton
+// ---------------------------------------------------------------------------
+
+function createBridge(): IWatchConnectivityBridge {
+  if (Platform.OS === 'ios' && NativeModules.WatchConnectivityBridge) {
+    return new NativeWatchBridge();
+  }
+  return new NoOpWatchBridge();
+}
+
+/**
+ * The bridge singleton used by the rest of the app.
+ * Automatically uses the real native module on iOS and a no-op on other platforms.
+ */
+export const watchBridge: IWatchConnectivityBridge = createBridge();
 
 // ---------------------------------------------------------------------------
 // Status mapping

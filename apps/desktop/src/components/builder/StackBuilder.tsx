@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -47,12 +47,17 @@ export function StackBuilder() {
   const [isTemplate, setIsTemplate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const formInitialized = useRef(false);
 
-  // Load existing stack for editing
+  // Load existing stack for editing — runs once when the stack first appears in the
+  // store. Removing `stacks` from deps would break the case where the builder mounts
+  // before the store has finished loading, so we keep it but guard with a ref so a
+  // background sync never resets an in-progress edit.
   useEffect(() => {
-    if (!editId) return;
+    if (!editId || formInitialized.current) return;
     const stack = stacks.find((s) => s.stackId === editId);
     if (!stack) return;
+    formInitialized.current = true;
     setName(stack.name);
     setIcon(stack.icon ?? '');
     setDescription(stack.description ?? '');

@@ -73,8 +73,9 @@ export abstract class BaseStackStorage implements IStackStorage {
           }))
         : existing.segments,
       isTemplate: input.isTemplate ?? existing.isTemplate,
-      description: input.description ?? existing.description,
-      icon: input.icon ?? existing.icon,
+      // Use `in` rather than `??` so an explicit undefined clears the field.
+      description: 'description' in input ? input.description : existing.description,
+      icon: 'icon' in input ? input.icon : existing.icon,
       updatedAt: Date.now(),
     };
 
