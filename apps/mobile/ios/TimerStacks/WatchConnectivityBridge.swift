@@ -25,6 +25,69 @@
 // Counterpart files:
 //   apps/watch/TimerStacksWatchApp/WatchConnectivityManager.swift
 //   apps/mobile/src/lib/watchConnectivity.ts
+//
+// ---------------------------------------------------------------------------
+// HOW TO TEST THE IPHONE ↔ WATCH INTEGRATION
+// ---------------------------------------------------------------------------
+//
+// PREREQUISITES
+//   • Apple Developer account with a team ID set in both Xcode projects.
+//   • iPhone and Apple Watch on the same Apple ID / paired together, OR
+//     use the iOS Simulator paired with a watchOS Simulator in Xcode.
+//
+// STEP 1 — Open and sign the iPhone project
+//   1. Open apps/mobile/ios/TimerStacks.xcworkspace in Xcode.
+//   2. Select the "TimerStacks" target → Signing & Capabilities.
+//   3. Set your Team. Bundle ID stays com.timerstacks.app.
+//   4. Ensure "WatchConnectivity" does NOT appear as a capability (it needs
+//      no entitlement — it is just a linked framework).
+//
+// STEP 2 — Open and sign the Watch project
+//   1. Open apps/watch/TimerStacksWatchApp.xcodeproj in Xcode.
+//   2. Select the "TimerStacksWatchApp" target → Signing & Capabilities.
+//   3. Set the SAME Team as the iPhone app.
+//   4. Bundle ID stays com.timerstacks.watchapp.
+//      The WKCompanionAppBundleIdentifier (com.timerstacks.app) in Info.plist
+//      links the watch app to the iPhone app — no bundle-ID prefix required
+//      for watchOS 6+ independent apps.
+//
+// STEP 3 — Run both apps
+//   Order matters when using simulators:
+//   a. In the iPhone Xcode window, choose an iPhone simulator and press Run.
+//      Wait until the app is fully loaded.
+//   b. In the Watch Xcode window, choose the PAIRED watchOS simulator
+//      (must match the same iOS simulator pair) and press Run.
+//
+// STEP 4 — Verify sync iPhone → Watch
+//   a. On the iPhone app, start any timer stack.
+//   b. The Watch app should transition from the idle screen to the
+//      ActiveSessionView showing:
+//        - stack name (header)
+//        - segment name + "X of Y" counter
+//        - live countdown ticking every second
+//        - total remaining time
+//        - progress bar filling left-to-right
+//
+// STEP 5 — Verify Watch → iPhone controls
+//   a. Tap Pause (⏸) on the watch → countdown freezes on both devices.
+//   b. Tap Resume (▶) on the watch → countdown resumes on both devices.
+//   c. Tap Skip (⏭) on the watch → next segment loads, counter increments.
+//   d. Tap Stop (⏹) on the watch → session ends, watch shows idle screen.
+//
+// STEP 6 — Verify completion
+//   Let the last segment count down to 0. The iPhone advances to the next
+//   segment and pushes a new snapshot. When all segments complete:
+//     - Watch shows the completion screen ("Done! ✓").
+//     - iPhone marks the session as completed in the history.
+//
+// TROUBLESHOOTING
+//   • "Waiting for connection…" on the Watch — ensure the iPhone simulator
+//     is running and the watchOS simulator is paired with it.
+//   • Actions from the watch have no effect — check that the iPhone app is
+//     in the foreground (WCSession sendMessage requires the companion app to
+//     be reachable; transferUserInfo is the fallback for background delivery).
+//   • WatchConnectivityBridge not found — rebuild the iOS project and check
+//     that WatchConnectivityBridgeModule.mm is in the "Compile Sources" phase.
 // ---------------------------------------------------------------------------
 
 import Foundation

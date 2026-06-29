@@ -29,6 +29,9 @@
 //
 // iPhone-side counterpart:
 //   apps/mobile/src/lib/watchConnectivity.ts  (IWatchConnectivityBridge)
+//
+// Full integration test instructions are in:
+//   apps/mobile/ios/TimerStacks/WatchConnectivityBridge.swift (HOW TO TEST)
 // ---------------------------------------------------------------------------
 
 import Foundation
